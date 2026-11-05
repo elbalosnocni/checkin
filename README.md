@@ -1,6 +1,6 @@
 # checkin
 Copy công thức dưới đây dán vào ô D2 trong Google Sheets (sau đó kéo xuống cho các nhân viên khác):
-
+="https://googleapis.com"&ENCODEURL("https://elbalosnocni.github.io/checkin/?id="&A2)
 ="https://googleapis.com" & ENCODEURL("LINK_GITHUB_PAGES_CỦA_BẠN?id=" & A2)
 (Ví dụ link github: https://github.io)
 
