@@ -44,7 +44,7 @@ Tab tự tạo `CHECKIN_LOG`: RequestID, MaNV, HoTen, ThoiGian, DriveFileID, Anh
 2. `PUBLIC_PAGE_URL` trong `Code.gs` đã đặt theo địa chỉ cũ `https://elbalosnocni.github.io/checkin/`; nếu repo Pages thực tế khác, hãy sửa lại đúng URL và có dấu `/` cuối.
 3. Deploy Apps Script **version mới** sau khi cập nhật `PUBLIC_PAGE_URL`.
 4. Đưa `index.html` lên GitHub Pages.
-5. Mở trang quản trị: `https://TEN-ACCOUNT.github.io/TEN-REPO/?admin=1`.
+5. Mở trang công khai và bấm liên kết **Dành cho quản trị viên** ở đầu trang; hệ thống yêu cầu nhập PIN. Có thể mở trực tiếp `https://TEN-ACCOUNT.github.io/TEN-REPO/?admin=1&login=1` khi cần.
 6. Đăng nhập PIN. Trang quản trị đọc danh sách token và tạo QR riêng cho từng nhân viên. Có thể bấm **QR** để tải ảnh từng người hoặc **Xuất CSV** để trộn/in hàng loạt bằng phần mềm QR phù hợp.
 
 ## 5. Quy trình vận hành
@@ -101,7 +101,8 @@ Mặc định nếu chưa cấu hình: `08:00` đến `22:00` (giờ máy chủ 
 
 ### Loading và đường dẫn
 - Trang admin có overlay loading khi tải dữ liệu, đăng nhập và thực hiện thao tác cập nhật.
-- Admin có liên kết mở trang điểm danh công khai và liên kết trang quản trị `?admin=1`.
+- Dashboard chỉ còn liên kết mở trang điểm danh công khai; không hiển thị URL quản trị.
+- Trang công khai có liên kết **Dành cho quản trị viên**; liên kết này buộc đăng nhập lại PIN kể cả khi trình duyệt còn phiên cũ.
 - Đường dẫn trang công khai vẫn lấy từ `PUBLIC_PAGE_URL` trong `Code.gs`.
 
 ### Cập nhật triển khai
@@ -119,3 +120,9 @@ Mặc định nếu chưa cấu hình: `08:00` đến `22:00` (giờ máy chủ 
 - Nhấn **Lưu giới hạn**. Cấu hình được lưu trong Script Properties và được máy chủ kiểm tra lại mỗi lần nhận điểm danh (cả nhân viên tự điểm danh và admin chụp thay).
 - Có thể xóa một giới hạn ngày bằng cách xóa giá trị ngày tương ứng rồi nhấn Lưu giới hạn.
 - Không cần sửa Script Properties thủ công cho ngày nữa. Giờ cũng có thể thay đổi ngay tại dashboard.
+
+### Sửa lỗi định dạng ngày và truy cập quản trị
+- Ngày bắt đầu/kết thúc nhập bằng văn bản theo đúng `YYYY-MM-DD`; để trống nếu không giới hạn.
+- Giao diện và máy chủ kiểm tra cả định dạng lẫn ngày lịch hợp lệ (bao gồm năm nhuận), đồng thời không cho ngày bắt đầu sau ngày kết thúc.
+- Sửa regex ở `getCheckinWindow_()` vốn khiến ngày ISO đã lưu bị nhận nhầm là sai định dạng khi tải lại cấu hình.
+- Liên kết quản trị được chuyển khỏi Dashboard sang trang công khai và luôn yêu cầu nhập lại PIN.

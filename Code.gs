@@ -241,6 +241,16 @@ function processAdminDeleteCheckin_(payload) {
   }
 }
 
+function isValidISODate_(value) {
+  const text = String(value || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const parts = text.split('-').map(Number);
+  const year = parts[0], month = parts[1], day = parts[2];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
 function getCheckinWindow_() {
   const props = PropertiesService.getScriptProperties();
   const startTime = String(props.getProperty('CHECKIN_START_TIME') || CONFIG.DEFAULT_CHECKIN_START);
@@ -250,8 +260,8 @@ function getCheckinWindow_() {
   }
   const startDate = String(props.getProperty('CHECKIN_START_DATE') || '');
   const endDate = String(props.getProperty('CHECKIN_END_DATE') || '');
-  if ((startDate && !/^\\d{4}-\\d{2}-\\d{2}$/.test(startDate)) ||
-      (endDate && !/^\\d{4}-\\d{2}-\\d{2}$/.test(endDate))) {
+  if ((startDate && !isValidISODate_(startDate)) ||
+      (endDate && !isValidISODate_(endDate))) {
     throw new Error('Ngay bat dau/ket thuc khong dung dinh dang YYYY-MM-DD.');
   }
   if (startDate && endDate && startDate > endDate) throw new Error('Ngay ket thuc phai bang hoac sau ngay bat dau.');
@@ -287,8 +297,8 @@ function processAdminSaveWindow_(payload) {
   const endDate = String(payload.endDate || '').trim();
   const startTime = String(payload.startTime || '').trim();
   const endTime = String(payload.endTime || '').trim();
-  if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) throw new Error('Ngay bat dau khong hop le.');
-  if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) throw new Error('Ngay ket thuc khong hop le.');
+  if (startDate && !isValidISODate_(startDate)) throw new Error('Ngay bat dau khong hop le. Dinh dang YYYY-MM-DD.');
+  if (endDate && !isValidISODate_(endDate)) throw new Error('Ngay ket thuc khong hop le. Dinh dang YYYY-MM-DD.');
   if (startDate && endDate && startDate > endDate) throw new Error('Ngay ket thuc phai bang hoac sau ngay bat dau.');
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)) {
     throw new Error('Gio bat dau/ket thuc phai dung dinh dang HH:mm.');

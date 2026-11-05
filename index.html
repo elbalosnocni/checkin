@@ -11,18 +11,18 @@
 .spinner{width:22px;height:22px;border:3px solid #ffffff55;border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .admin-links{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}
-.admin-links a{color:#1769aa;font-weight:650}
+.admin-links a{color:#1769aa;font-weight:650}.public-admin-link{display:inline-block;margin-top:12px;color:#dceeff;font-weight:650;text-decoration:underline;text-underline-offset:3px;font-size:14px}
 .camera-modal .card{max-width:520px}
 </style>
 </head>
 <body><main class="wrap">
-<section class="hero"><div class="topline"><div><h1>Điểm danh tham dự tiệc</h1><div class="muted">Quét QR cá nhân · Chụp ảnh selfie · Xác nhận tham dự</div></div><span>🎉</span></div></section>
-<section id="checkinView" class="card hidden"><h2 id="welcome">Xin chào</h2><p class="muted">Vui lòng chụp ảnh selfie để xác nhận bạn đã có mặt tại buổi tiệc. Hệ thống chỉ nhận điểm danh trong khung giờ được ban tổ chức cấu hình.</p><div class="admin-links"><a id="adminEntryLink" href="?admin=1">Dành cho quản trị viên</a></div><video id="video" class="camera" autoplay playsinline muted></video><canvas id="canvas" class="hidden"></canvas><div class="actions"><button id="captureBtn">📸 Chụp ảnh selfie</button><button id="retakeBtn" class="secondary hidden">Chụp lại</button></div><img id="preview" class="camera hidden" alt="Ảnh selfie xem trước"><div id="checkinStatus" class="status" role="status">Đang kiểm tra QR...</div><button id="submitBtn" class="hidden" style="width:100%;margin-top:12px">Xác nhận điểm danh</button></section>
+<section class="hero"><div class="topline"><div><h1>Điểm danh tham dự tiệc</h1><div class="muted">Quét QR cá nhân · Chụp ảnh selfie · Xác nhận tham dự</div><a id="publicAdminLink" class="public-admin-link" href="?admin=1&amp;login=1">Dành cho quản trị viên</a></div><span>🎉</span></div></section>
+<section id="checkinView" class="card hidden"><h2 id="welcome">Xin chào</h2><p class="muted">Vui lòng chụp ảnh selfie để xác nhận bạn đã có mặt tại buổi tiệc. Hệ thống chỉ nhận điểm danh trong khung giờ được ban tổ chức cấu hình.</p><video id="video" class="camera" autoplay playsinline muted></video><canvas id="canvas" class="hidden"></canvas><div class="actions"><button id="captureBtn">📸 Chụp ảnh selfie</button><button id="retakeBtn" class="secondary hidden">Chụp lại</button></div><img id="preview" class="camera hidden" alt="Ảnh selfie xem trước"><div id="checkinStatus" class="status" role="status">Đang kiểm tra QR...</div><button id="submitBtn" class="hidden" style="width:100%;margin-top:12px">Xác nhận điểm danh</button></section>
 <section id="invalidView" class="card hidden"><h2>Không thể mở QR</h2><p id="invalidMessage" class="error">QR không hợp lệ hoặc đã bị khóa.</p><p class="hint">Vui lòng liên hệ ban tổ chức để được hỗ trợ.</p></section>
 <section id="adminLoginView" class="card hidden"><h2>Quản trị điểm danh</h2><p class="muted">Đăng nhập bằng PIN do quản trị viên thiết lập.</p><input id="adminPin" class="field" type="password" inputmode="numeric" autocomplete="current-password" placeholder="PIN quản trị"><button id="loginBtn" style="width:100%">Đăng nhập</button><div id="loginStatus" class="status"></div></section>
 <section id="adminView" class="card hidden"><div class="topline"><div><h2 style="margin:0">Bảng điều khiển</h2><div class="muted" id="todayLabel"></div><div class="muted" id="adminHoursLabel"></div></div><button id="logoutBtn" class="secondary small">Đăng xuất</button></div>
 <div class="admin-links"><a id="publicPageLink" href="#" target="_blank" rel="noopener">Mở trang điểm danh</a></div>
-<div class="card" style="margin:12px 0;background:#f6f9fc"><h3 style="margin-top:0">Cấu hình thời gian điểm danh</h3><p class="muted">Để trống ngày bắt đầu hoặc kết thúc nếu không muốn giới hạn phía đó. Ngày được tính bao gồm cả ngày bắt đầu và ngày kết thúc.</p><div class="toolbar"><label>Ngày bắt đầu <input id="windowStartDate" class="field" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" autocomplete="off"></label><label>Ngày kết thúc <input id="windowEndDate" class="field" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" autocomplete="off"></label><label>Giờ bắt đầu <input id="windowStartTime" class="field" type="time" required></label><label>Giờ kết thúc <input id="windowEndTime" class="field" type="time" required></label><button id="saveWindowBtn">Lưu giới hạn</button></div><div id="windowStatus" class="status"></div></div>
+<div class="card" style="margin:12px 0;background:#f6f9fc"><h3 style="margin-top:0">Cấu hình thời gian điểm danh</h3><p class="muted" id="dateFormatHint">Nhập đúng định dạng YYYY-MM-DD (ví dụ 2026-12-11). Để trống nếu không muốn giới hạn phía đó. Ngày bắt đầu và kết thúc đều được tính.</p><div class="toolbar"><label>Ngày bắt đầu <input id="windowStartDate" class="field" type="text" inputmode="numeric" autocomplete="off" placeholder="YYYY-MM-DD" maxlength="10" aria-describedby="dateFormatHint"></label><label>Ngày kết thúc <input id="windowEndDate" class="field" type="text" inputmode="numeric" autocomplete="off" placeholder="YYYY-MM-DD" maxlength="10" aria-describedby="dateFormatHint"></label><label>Giờ bắt đầu <input id="windowStartTime" class="field" type="time" required></label><label>Giờ kết thúc <input id="windowEndTime" class="field" type="time" required></label><button id="saveWindowBtn">Lưu giới hạn</button></div><div id="windowStatus" class="status"></div></div>
 <div class="stats"><div class="stat"><span class="muted">Tổng nhân viên</span><b id="sTotal">0</b></div><div class="stat"><span class="muted">Đã tham dự</span><b id="sAttended" class="success">0</b></div><div class="stat"><span class="muted">Chưa tham dự</span><b id="sAbsent">0</b></div><div class="stat"><span class="muted">QR đang hoạt động</span><b id="sActive">0</b></div></div><div class="toolbar"><input id="searchBox" class="field" placeholder="Tìm mã nhân viên hoặc họ tên..."><select id="filterBox" class="field" style="max-width:190px"><option value="all">Tất cả</option><option value="yes">Đã điểm danh</option><option value="no">Chưa điểm danh</option><option value="locked">QR đã khóa</option></select><button id="refreshBtn" class="secondary">Làm mới</button><button id="exportBtn">Xuất CSV</button></div><div class="hint">QR Token là thông tin bảo mật. Không chia sẻ file xuất QR công khai. Nếu QR bị lộ, hãy cấp token mới để vô hiệu hóa QR cũ.</div><div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Mã NV</th><th>Họ tên</th><th>Trạng thái</th><th>Thời gian</th><th>Ảnh</th><th>Quản lý</th></tr></thead><tbody id="employeeRows"></tbody></table></div><div id="adminStatus" class="status">Đang tải dữ liệu...</div></section>
 </main>
 <div id="loadingOverlay" class="loading-overlay hidden" aria-live="polite"><div class="loading-panel"><span class="spinner"></span><span id="loadingText">Đang xử lý...</span></div></div>
@@ -100,17 +100,28 @@ $('adminCameraModal').onclick=e=>{if(e.target===$('adminCameraModal'))closeAdmin
 
 let employeesPageUrl='';
 $('closeQrBtn').onclick=()=>$('qrModal').classList.add('hidden');$('qrModal').onclick=e=>{if(e.target===$('qrModal'))$('qrModal').classList.add('hidden')};$('downloadQrBtn').onclick=()=>{const el=$('qrCanvas').querySelector('canvas')||$('qrCanvas').querySelector('img');if(!el)return;const a=document.createElement('a');a.href=el.tagName==='CANVAS'?el.toDataURL('image/png'):el.src;a.download='QR_'+qrCurrentCode+'.png';a.click()};
-$('searchBox').oninput=renderEmployees;$('filterBox').onchange=renderEmployees;
-function validISODate(value){if(!value)return true;if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;const d=new Date(value+'T00:00:00Z');return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===value}
-$('saveWindowBtn').onclick=async()=>{
-  const startDate=$('windowStartDate').value.trim(),endDate=$('windowEndDate').value.trim();
-  if(!validISODate(startDate)||!validISODate(endDate)){setStatus('windowStatus','Ngày phải đúng định dạng YYYY-MM-DD (ví dụ 2026-12-11).','error');return}
-  if(startDate&&endDate&&startDate>endDate){setStatus('windowStatus','Ngày bắt đầu không được sau ngày kết thúc.','error');return}
-  if(!$('windowStartTime').value||!$('windowEndTime').value){setStatus('windowStatus','Vui lòng nhập đầy đủ giờ bắt đầu và giờ kết thúc.','error');return}
+function isValidISODate(value){
+  if(value==='')return true;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
+  const [y,m,d]=value.split('-').map(Number);
+  const date=new Date(Date.UTC(y,m-1,d));
+  return date.getUTCFullYear()===y&&date.getUTCMonth()===m-1&&date.getUTCDate()===d;
+}
+function validateWindowDates(){
+  const start=$('windowStartDate').value.trim(),end=$('windowEndDate').value.trim();
+  if(!isValidISODate(start)){setStatus('windowStatus','Ngày bắt đầu không hợp lệ. Vui lòng nhập YYYY-MM-DD và ngày có thật.','error');$('windowStartDate').focus();return false}
+  if(!isValidISODate(end)){setStatus('windowStatus','Ngày kết thúc không hợp lệ. Vui lòng nhập YYYY-MM-DD và ngày có thật.','error');$('windowEndDate').focus();return false}
+  if(start&&end&&start>end){setStatus('windowStatus','Ngày bắt đầu không được sau ngày kết thúc.','error');$('windowStartDate').focus();return false}
+  return true;
+}
+$('windowStartDate').addEventListener('blur',()=>{if($('windowStartDate').value.trim()&&!isValidISODate($('windowStartDate').value.trim()))setStatus('windowStatus','Ngày bắt đầu phải đúng YYYY-MM-DD và là ngày hợp lệ.','error')});
+$('windowEndDate').addEventListener('blur',()=>{if($('windowEndDate').value.trim()&&!isValidISODate($('windowEndDate').value.trim()))setStatus('windowStatus','Ngày kết thúc phải đúng YYYY-MM-DD và là ngày hợp lệ.','error')});
+$('searchBox').oninput=renderEmployees;$('filterBox').onchange=renderEmployees;$('saveWindowBtn').onclick=async()=>{
+  if(!validateWindowDates())return;
   const btn=$('saveWindowBtn');setButtonBusy(btn,true,'Đang lưu...');
   try{
     const r=await postAndWait({action:'adminSaveWindow',session:adminSession,
-      startDate,endDate,
+      startDate:$('windowStartDate').value.trim(),endDate:$('windowEndDate').value.trim(),
       startTime:$('windowStartTime').value,endTime:$('windowEndTime').value});
     if(r.status!=='SUCCESS')throw new Error(r.message||'Không lưu được cấu hình.');
     setStatus('windowStatus',r.message,'success');await loadAdmin();
@@ -119,5 +130,5 @@ $('saveWindowBtn').onclick=async()=>{
 };
 $('refreshBtn').onclick=loadAdmin;$('exportBtn').onclick=()=>{const rows=[['MaNV','HoTen','TrangThaiQR','DiemDanh','ThoiGian','AnhURL','QR_URL']];employees.forEach(x=>rows.push([x.code,x.name,x.active?'ACTIVE':'LOCKED',x.checkedIn?'DA_DEN':'CHUA_DEN',x.time,x.photoUrl,(employeesPageUrl||'')+'?t='+x.token]));const csv='\ufeff'+rows.map(r=>r.map(v=>{let z=String(v??'');if(/^[=+@\-]/.test(z))z="'"+z;return '"'+z.replace(/"/g,'""')+'"'}).join(',')).join('\r\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='Danh_sach_diem_danh.csv';a.click();URL.revokeObjectURL(a.href)};
 $('loginBtn').onclick=adminLogin;$('adminPin').addEventListener('keydown',e=>{if(e.key==='Enter')adminLogin()});$('logoutBtn').onclick=()=>{adminSession='';sessionStorage.removeItem('checkinAdminSession');showOnly('adminLoginView')};
-(async function boot(){$('adminEntryLink').href=location.href.split('?')[0]+'?admin=1';if(!API_URL.endsWith('/exec')){showOnly('invalidView');$('invalidMessage').textContent='Cần cấu hình URL Apps Script Web App kết thúc bằng /exec.';return}if(new URLSearchParams(location.search).get('admin')==='1'){showOnly('adminLoginView');adminSession=sessionStorage.getItem('checkinAdminSession')||'';if(adminSession)await loadAdmin()}else await initPublic()})();
+(async function boot(){if(!API_URL.endsWith('/exec')){showOnly('invalidView');$('invalidMessage').textContent='Cần cấu hình URL Apps Script Web App kết thúc bằng /exec.';return}const params=new URLSearchParams(location.search);$('publicAdminLink').classList.toggle('hidden',params.get('admin')==='1');if(params.get('admin')==='1'){if(params.get('login')==='1'){sessionStorage.removeItem('checkinAdminSession');adminSession='';}else{adminSession=sessionStorage.getItem('checkinAdminSession')||'';}showOnly('adminLoginView');if(adminSession)await loadAdmin()}else await initPublic()})();
 </script></body></html>
