@@ -454,6 +454,59 @@ function getLogSheet_(ss) {
   return sh;
 }
 
+/** Dong bo nhan vien moi vao QR_TOKENS ma khong doi token/trang thai cua nhan vien cu. */
+function syncNewEmployeesToTokens_(ss, employeeSheet, tokenSheet) {
+  const rosterLast = employeeSheet.getLastRow();
+  if (rosterLast < CONFIG.FIRST_DATA_ROW) return 0;
+
+  const roster = employeeSheet.getRange(
+    CONFIG.FIRST_DATA_ROW, 1,
+    rosterLast - CONFIG.FIRST_DATA_ROW + 1,
+    Math.max(CONFIG.CODE_COL, CONFIG.NAME_COL)
+  ).getDisplayValues();
+
+  const tokenLast = tokenSheet.getLastRow();
+  const tokenRows = tokenLast >= 2
+    ? tokenSheet.getRange(2, 1, tokenLast - 1, 4).getDisplayValues()
+    : [];
+  const byCode = {};
+  const usedTokens = {};
+  tokenRows.forEach((r, i) => {
+    const code = String(r[CONFIG.TOKEN_CODE_COL - 1] || '').trim();
+    const token = String(r[CONFIG.TOKEN_VALUE_COL - 1] || '').trim();
+    if (code) byCode[code] = i + 2;
+    if (token) usedTokens[token] = true;
+  });
+
+  const additions = [];
+  const updates = [];
+  const seenCodes = {};
+  roster.forEach(r => {
+    const code = String(r[CONFIG.CODE_COL - 1] || '').trim();
+    if (!code || seenCodes[code]) return;
+    seenCodes[code] = true;
+    const name = String(r[CONFIG.NAME_COL - 1] || '').trim();
+    const existingRow = byCode[code];
+    if (existingRow) {
+      // Chi cap nhat ten; khong ghi de QR_TOKEN hoac trang thai hien co.
+      updates.push({ row: existingRow, name: name });
+    } else {
+      let token = newToken_();
+      while (usedTokens[token]) token = newToken_();
+      usedTokens[token] = true;
+      additions.push([code, name, token, 'ACTIVE']);
+    }
+  });
+
+  updates.forEach(item => tokenSheet.getRange(item.row, CONFIG.TOKEN_NAME_COL).setValue(item.name));
+  if (additions.length) {
+    const startRow = Math.max(2, tokenSheet.getLastRow() + 1);
+    tokenSheet.getRange(startRow, 1, additions.length, 4).setValues(additions);
+    tokenSheet.getRange(startRow, CONFIG.TOKEN_VALUE_COL, additions.length, 1).setNumberFormat('@');
+  }
+  return additions.length;
+}
+
 /** Chay mot lan: tao cot token/trang thai va cap token rieng cho nhan vien chua co. */
 function getTokenSheet_(ss) {
   let sh = ss.getSheetByName(CONFIG.TOKEN_SHEET_NAME);
