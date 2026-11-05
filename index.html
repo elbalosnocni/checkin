@@ -1,96 +1,59 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Xác Thực Check-in Noel</title>
-  <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; background: #f7f9fa; padding: 15px; margin: 0; }
-    .container { max-width: 400px; margin: 20px auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
-    h2 { color: #d9534f; margin-top: 0; }
-    .info { font-size: 15px; margin: 15px 0; color: #2c3e50; line-height: 1.6; background: #e8f5e9; padding: 12px; border-radius: 8px; border-left: 5px solid #2e7d32; text-align: left; }
-    button { width: 100%; padding: 14px; margin: 15px 0; border-radius: 8px; background: #d9534f; color: white; border: none; font-weight: bold; font-size: 16px; cursor: pointer; transition: 0.2s; }
-    button:disabled { background: #cccccc; cursor: not-allowed; }
-    #video { width: 100%; max-width: 320px; border-radius: 12px; background: #222; transform: scaleX(-1); box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
-    #canvas { display: none; }
-    #loading { color: #d9534f; display: none; font-weight: bold; margin-top: 10px; }
-    .error { color: #c62828; font-weight: bold; background: #ffebee; padding: 15px; border-radius: 8px; display: none; }
-  </style>
-</head>
-<body>
-
-<div class="container">
-  <h2>🎄 XÁC THỰC CHECK-IN NOEL 🎄</h2>
-  
-  <div id="checkin-box">
-    <div class="info">
-      Mã số nhân viên: <strong id="txt-msnv">Đang tải...</strong>
-    </div>
-    
-    <p style="color: #555; font-size: 14px;">Vui lòng nhìn thẳng vào camera và mỉm cười:</p>
-    <video id="video" autoplay playsinline></video>
-    <canvas id="canvas" width="480" height="640"></canvas>
-    
-    <button id="btn-snap" onclick="captureAndUpload()">BẤM ĐỂ CHỤP & VÀO TIỆC</button>
-    <p id="loading">Đang tải ảnh và điểm danh, vui lòng đợi...⏳</p>
-  </div>
-
-  <p id="error-box" class="error">❌ Không tìm thấy mã nhân viên hợp lệ trên đường link quét mã!</p>
-</div>
-
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#8b1e2d"><title>Check-in tiệc</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#20242a;background:#f5f6f8}*{box-sizing:border-box}body{margin:0;padding:18px 12px 32px}.wrap{max-width:460px;margin:12px auto;background:#fff;border-radius:20px;padding:22px;box-shadow:0 8px 30px #17203312}h1{font-size:22px;color:#8b1e2d;margin:0 0 8px}.sub{color:#667085;font-size:14px;margin:0 0 18px}.employee{background:#f2f8f3;border-left:4px solid #25834b;border-radius:10px;padding:13px;text-align:left;margin:16px 0}.camera{width:100%;aspect-ratio:3/4;max-height:480px;object-fit:cover;background:#171717;border-radius:14px;display:block;transform:scaleX(-1)}canvas{display:none}.actions{display:grid;gap:10px;margin-top:14px}button{border:0;border-radius:12px;padding:15px 16px;font-size:16px;font-weight:700;background:#8b1e2d;color:#fff;cursor:pointer}button.secondary{background:#eef0f3;color:#303744}button:disabled{opacity:.55;cursor:not-allowed}.status{display:none;padding:13px;border-radius:10px;margin-top:14px;text-align:left;line-height:1.5}.status.info{display:block;background:#fff7e6;color:#875800}.status.ok{display:block;background:#eaf7ee;color:#176b37}.status.err{display:block;background:#ffeded;color:#a12626}.small{font-size:12px;color:#667085;margin-top:14px}.hidden{display:none!important}
+</style></head>
+<body><main class="wrap">
+<h1>🎉 CHECK-IN THAM DỰ TIỆC</h1><p class="sub">Xác nhận thông tin và chụp ảnh selfie để hoàn tất điểm danh.</p>
+<section id="main" class="hidden">
+<div class="employee">Mã nhân viên: <strong id="code"></strong></div>
+<video id="video" class="camera" autoplay playsinline muted></video><canvas id="canvas"></canvas>
+<div class="actions"><button id="snap" disabled>CHỤP ẢNH & ĐIỂM DANH</button><button id="retry" class="secondary hidden">CHỤP LẠI</button></div>
+<div id="status" class="status" role="status" aria-live="polite"></div>
+<p class="small">Vui lòng cho phép trình duyệt truy cập camera. Nếu mở từ Zalo, hãy chọn mở bằng Chrome hoặc Safari.</p>
+</section>
+<div id="fatal" class="status err">Không tìm thấy mã nhân viên hợp lệ trên đường dẫn QR. Vui lòng quét lại mã QR do ban tổ chức cung cấp.</div>
+</main>
 <script>
-  // Link Google Web App của bạn
-  const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzpzsF1OM8fw8aucAnWOQ9vVgf9Z7tIWXBbILJ2-DZ0bY8xGXUDnRnYNu2YihXKo3EkSw/exec";
-  
-  const video = document.getElementById('video');
-  const canvas = document.getElementById('canvas');
-  const loading = document.getElementById('loading');
-  const btnSnap = document.getElementById('btn-snap');
-  
-  // Tự động bóc tách tham số id từ URL của GitHub (Ví dụ: ...github.io?id=NV001)
-  const urlParams = new URLSearchParams(window.location.search);
-  const msnv = urlParams.get('id');
-
-  if (!msnv) {
-    document.getElementById('checkin-box').style.display = 'none';
-    document.getElementById('error-box').style.display = 'block';
-  } else {
-    document.getElementById('txt-msnv').innerText = msnv;
-    // Mở camera selfie
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
-      .then(stream => { video.srcObject = stream; })
-      .catch(err => { 
-        alert("Trình duyệt cần quyền truy cập Camera để check-in. Nếu dùng Zalo, vui lòng bấm nút 3 chấm góc trên bên phải chọn 'Mở bằng Safari/Chrome'!"); 
-      });
-  }
-
-  function captureAndUpload() {
-    btnSnap.disabled = true;
-    loading.style.display = "block";
-
-    const context = canvas.getContext('2d');
-    context.drawImage(video, 0, 0, 480, 640);
-    const imageData = canvas.toDataURL('image/jpeg', 0.75); // Nén ảnh 75%
-
-    // Gửi dữ liệu qua Google Script bằng phương thức POST vượt rào CORS
-    fetch(WEB_APP_URL, {
-      method: "POST",
-      mode: "no-cors", // Bắt buộc phải có để tránh lỗi bảo mật chéo của Google
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ msnv: msnv, image: imageData })
-    })
-    .then(() => {
-      alert("Đã gửi thông tin điểm danh lên hệ thống! Chúc bạn dự tiệc vui vẻ 🎉");
-      loading.style.display = "none";
-      btnSnap.disabled = false;
-    })
-    .catch(err => {
-      alert("Lỗi kết nối mạng: " + err.toString());
-      loading.style.display = "none";
-      btnSnap.disabled = false;
-    });
-  }
-</script>
-
-</body>
-</html>
+const WEB_APP_URL='https://script.google.com/macros/s/AKfycbzpzsF1OM8fw8aucAnWOQ9vVgf9Z7tIWXBbILJ2-DZ0bY8xGXUDnRnYNu2YihXKo3EkSw/exec';
+const params=new URLSearchParams(location.search);const msnv=(params.get('id')||'').trim();
+const $=id=>document.getElementById(id);const video=$('video'),canvas=$('canvas'),snap=$('snap'),statusBox=$('status');let stream=null,busy=false;
+function showStatus(message,type){statusBox.className='status '+type;statusBox.textContent=message;}
+function stopCamera(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}video.srcObject=null;}
+async function startCamera(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('Trình duyệt không hỗ trợ camera. Hãy mở bằng Chrome hoặc Safari và sử dụng HTTPS.');
+  stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:720},height:{ideal:960}}});
+  video.srcObject=stream;await video.play();snap.disabled=false;
+}
+function makeRequestId(){return 'ci_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,12);}
+function waitForServer(requestId){return new Promise((resolve,reject)=>{
+  let finished=false,tries=0;const callback='checkinStatusCallback';
+  window[callback]=data=>{if(finished)return;if(data.status==='SUCCESS'){finished=true;cleanup();resolve(data);}else if(data.status==='ERROR'){finished=true;cleanup();reject(new Error(data.message||'Máy chủ không thể lưu điểm danh.'));}};
+  const script=document.createElement('script');script.onerror=()=>{};
+  const cleanup=()=>{clearInterval(timer);script.remove();delete window[callback];};
+  const check=()=>{tries++;script.src=WEB_APP_URL+'?action=status&requestId='+encodeURIComponent(requestId)+'&callback='+callback+'&t='+Date.now();document.head.appendChild(script);if(tries>=18&&!finished){finished=true;cleanup();reject(new Error('Chưa nhận được xác nhận từ máy chủ. Vui lòng kiểm tra với ban tổ chức trước khi thử lại.'));}};
+  const timer=setInterval(check,1800);check();
+});}
+async function captureAndUpload(){
+ if(busy||!stream)return;busy=true;snap.disabled=true;$('retry').classList.add('hidden');showStatus('Đang chụp ảnh và gửi dữ liệu. Vui lòng giữ nguyên màn hình…','info');
+ try{
+  const w=video.videoWidth,h=video.videoHeight;if(!w||!h)throw new Error('Camera chưa sẵn sàng. Vui lòng thử lại.');
+  const maxW=720,scale=Math.min(1,maxW/w),outW=Math.round(w*scale),outH=Math.round(h*scale);canvas.width=outW;canvas.height=outH;
+  const ctx=canvas.getContext('2d');ctx.translate(outW,0);ctx.scale(-1,1);ctx.drawImage(video,0,0,outW,outH);
+  const image=canvas.toDataURL('image/jpeg',0.78);const requestId=makeRequestId();
+  const payload={requestId,msnv,image};
+  // POST dạng form-urlencoded là simple request, tránh preflight CORS.
+  await fetch(WEB_APP_URL,{method:'POST',mode:'no-cors',body:new URLSearchParams({payload:JSON.stringify(payload)})});
+  const result=await waitForServer(requestId);
+  showStatus('Điểm danh thành công! '+(result.name?'Xin chào '+result.name+'. ':'')+'Chúc bạn có một buổi tiệc vui vẻ! 🎉','ok');
+  stopCamera();$('retry').classList.add('hidden');
+ }catch(err){showStatus(err.message||'Có lỗi xảy ra khi điểm danh.','err');snap.disabled=false;$('retry').classList.remove('hidden');}
+ finally{busy=false;}
+}
+if(msnv&&msnv.length<=50){$('fatal').classList.add('hidden');$('main').classList.remove('hidden');$('code').textContent=msnv;startCamera().catch(err=>showStatus(err.message,'err'));}else{$('main').classList.add('hidden');}
+snap.addEventListener('click',captureAndUpload);$('retry').addEventListener('click',()=>{if(stream){snap.disabled=false;showStatus('Bạn có thể chụp lại ảnh.','info');}else startCamera().then(()=>showStatus('Camera đã sẵn sàng.','info')).catch(e=>showStatus(e.message,'err'));});
+window.addEventListener('pagehide',stopCamera);
+</script></body></html>
