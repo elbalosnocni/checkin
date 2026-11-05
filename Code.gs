@@ -19,6 +19,9 @@ const CONFIG = Object.freeze({
   TOKEN_VALUE_COL: 3,
   TOKEN_ACTIVE_COL: 4,
   MAX_IMAGE_BYTES: 4 * 1024 * 1024,
+  // Có thể ghi đè bằng Script Properties CHECKIN_START_TIME / CHECKIN_END_TIME (HH:mm).
+  DEFAULT_CHECKIN_START: '08:00',
+  DEFAULT_CHECKIN_END: '22:00',
   SESSION_TTL_SECONDS: 21600,
   STATUS_TTL_SECONDS: 21600,
   PUBLIC_PAGE_URL: 'https://elbalosnocni.github.io/checkin/'
@@ -35,7 +38,10 @@ function doGet(e) {
     }
     if (action === 'lookup') {
       const found = findEmployeeByToken_(String(p.token || ''));
-      return jsonp_(found ? { status: 'OK', name: found.name } : { status: 'INVALID', message: 'QR khong hop le hoac da bi khoa.' }, cb);
+      const windowInfo = getCheckinWindowInfo_();
+      return jsonp_(found ? { status: 'OK', name: found.name, allowed: windowInfo.allowed,
+        startTime: windowInfo.startTime, endTime: windowInfo.endTime, serverNow: windowInfo.serverNow,
+        message: windowInfo.allowed ? '' : windowInfo.message } : { status: 'INVALID', message: 'QR khong hop le hoac da bi khoa.' }, cb);
     }
     if (action === 'adminData') {
       requireAdminSession_(p.session);
@@ -63,6 +69,9 @@ function doPost(e) {
     else if (payload.action === 'adminLogin') result = processAdminLogin_(payload);
     else if (payload.action === 'adminRotateToken') result = processAdminMutation_(payload, rotateEmployeeToken_);
     else if (payload.action === 'adminSetActive') result = processAdminMutation_(payload, setEmployeeActive_);
+    else if (payload.action === 'adminCheckin') result = processAdminCheckin_(payload);
+    else if (payload.action === 'adminDeleteCheckin') result = processAdminDeleteCheckin_(payload);
+    else if (payload.action === 'adminSaveWindow') result = processAdminSaveWindow_(payload);
     else throw new Error('Lenh khong duoc ho tro.');
 
     putCachedResult_(requestId, result);
@@ -99,6 +108,7 @@ function processCheckin_(payload) {
     if (!isActive_(employee.active)) throw new Error('QR cua nhan vien dang bi khoa. Vui long lien he ban to chuc.');
 
     const now = new Date();
+    assertCheckinAllowed_(now);
     previousTime = sheet.getRange(employee.row, CONFIG.TIME_COL).getValue();
     previousPhoto = sheet.getRange(employee.row, CONFIG.PHOTO_COL).getValue();
     if (previousTime instanceof Date && sameDay_(previousTime, now)) {
@@ -129,6 +139,165 @@ function processCheckin_(payload) {
   } finally {
     lock.releaseLock();
   }
+}
+
+
+function processAdminCheckin_(payload) {
+  requireAdminSession_(payload.session);
+  const code = String(payload.code || '').trim();
+  if (!code) throw new Error('Thieu ma nhan vien.');
+  const image = String(payload.image || '');
+  const match = image.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) throw new Error('Anh selfie khong dung dinh dang.');
+  const bytes = Utilities.base64Decode(match[2]);
+  if (!bytes.length || bytes.length > CONFIG.MAX_IMAGE_BYTES) throw new Error('Anh rong hoac vuot qua 4 MB.');
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(25000);
+  let createdFile = null;
+  let employeeSheet = null;
+  let previousTime = null;
+  let previousPhoto = null;
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    const sheet = getEmployeeSheet_(ss);
+    employeeSheet = sheet;
+    const row = findEmployeeRowByCode_(sheet, code);
+    if (!row) throw new Error('Khong tim thay ma nhan vien trong danh sach.');
+    const name = String(sheet.getRange(row, CONFIG.NAME_COL).getDisplayValue() || '').trim();
+    const now = new Date();
+    assertCheckinAllowed_(now);
+    previousTime = sheet.getRange(row, CONFIG.TIME_COL).getValue();
+    previousPhoto = sheet.getRange(row, CONFIG.PHOTO_COL).getValue();
+    if (previousTime instanceof Date && sameDay_(previousTime, now)) {
+      throw new Error('Nhan vien da diem danh hom nay. Hay huy luot cu truoc khi tao luot moi.');
+    }
+
+    const mime = match[1];
+    const ext = mime === 'image/png' ? 'png' : (mime === 'image/webp' ? 'webp' : 'jpg');
+    const safeCode = code.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const stamp = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss');
+    const blob = Utilities.newBlob(bytes, mime, 'ADMIN_' + safeCode + '_' + stamp + '.' + ext);
+    createdFile = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID).createFile(blob);
+
+    sheet.getRange(row, CONFIG.TIME_COL, 1, 2).setValues([[now, createdFile.getUrl()]]);
+    const log = getLogSheet_(ss);
+    SpreadsheetApp.flush();
+    log.appendRow([String(payload.requestId || ''), code, name, now, createdFile.getId(), createdFile.getUrl(), 'SUCCESS', 'ADMIN_CHECKIN']);
+    return { status: 'SUCCESS', name: name, code: code, time: now.toISOString(), message: 'Da diem danh thay nhan vien ' + code + '.' };
+  } catch (err) {
+    if (createdFile && employeeSheet) {
+      const row = findEmployeeRowByCode_(employeeSheet, code);
+      if (row) {
+        try { employeeSheet.getRange(row, CONFIG.TIME_COL, 1, 2).setValues([[previousTime || '', previousPhoto || '']]); } catch (_) {}
+      }
+    }
+    if (createdFile) { try { createdFile.setTrashed(true); } catch (_) {} }
+    throw err;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Hủy lượt điểm danh trong log (không xóa dòng log hoặc ảnh Drive).
+ * Chỉ xóa E:F trên roster nếu đó vẫn là lượt đang được hiển thị mới nhất.
+ */
+function processAdminDeleteCheckin_(payload) {
+  requireAdminSession_(payload.session);
+  const code = String(payload.code || '').trim();
+  const requestId = String(payload.checkinRequestId || '').trim();
+  if (!code || !requestId) throw new Error('Thieu thong tin luot diem danh.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    const log = getLogSheet_(ss);
+    const last = log.getLastRow();
+    if (last < 2) throw new Error('Khong tim thay lich su diem danh.');
+    const values = log.getRange(2, 1, last - 1, 8).getValues();
+    let foundRow = 0;
+    for (let i = values.length - 1; i >= 0; i--) {
+      if (String(values[i][0]) === requestId && String(values[i][1]).trim() === code) {
+        foundRow = i + 2;
+        if (String(values[i][6]) !== 'SUCCESS') throw new Error('Luot diem danh nay da duoc huy hoac khong hop le.');
+        break;
+      }
+    }
+    if (!foundRow) throw new Error('Khong tim thay luot diem danh can huy.');
+    const sh = getEmployeeSheet_(ss);
+    const rosterRow = findEmployeeRowByCode_(sh, code);
+    if (!rosterRow) throw new Error('Khong tim thay nhan vien trong danh sach.');
+    const logTime = values[foundRow - 2][3];
+    const rosterTime = sh.getRange(rosterRow, CONFIG.TIME_COL).getValue();
+    if (rosterTime instanceof Date && logTime instanceof Date && rosterTime.getTime() === logTime.getTime()) {
+      sh.getRange(rosterRow, CONFIG.TIME_COL, 1, 2).clearContent();
+    }
+    log.getRange(foundRow, 7, 1, 2).setValues([['VOIDED', 'ADMIN_VOIDED']]);
+    SpreadsheetApp.flush();
+    return { status: 'SUCCESS', message: 'Da huy luot diem danh; lich su va anh goc duoc giu lai.' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getCheckinWindow_() {
+  const props = PropertiesService.getScriptProperties();
+  const startTime = String(props.getProperty('CHECKIN_START_TIME') || CONFIG.DEFAULT_CHECKIN_START);
+  const endTime = String(props.getProperty('CHECKIN_END_TIME') || CONFIG.DEFAULT_CHECKIN_END);
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)) {
+    throw new Error('Khung gio diem danh chua dung dinh dang HH:mm trong Script Properties.');
+  }
+  const startDate = String(props.getProperty('CHECKIN_START_DATE') || '');
+  const endDate = String(props.getProperty('CHECKIN_END_DATE') || '');
+  if ((startDate && !/^\\d{4}-\\d{2}-\\d{2}$/.test(startDate)) ||
+      (endDate && !/^\\d{4}-\\d{2}-\\d{2}$/.test(endDate))) {
+    throw new Error('Ngay bat dau/ket thuc khong dung dinh dang YYYY-MM-DD.');
+  }
+  if (startDate && endDate && startDate > endDate) throw new Error('Ngay ket thuc phai bang hoac sau ngay bat dau.');
+  return { startTime: startTime, endTime: endTime, startDate: startDate, endDate: endDate };
+}
+
+function getCheckinWindowInfo_() {
+  const w = getCheckinWindow_();
+  const now = new Date();
+  const nowText = Utilities.formatDate(now, Session.getScriptTimeZone(), 'HH:mm');
+  const toMin = s => Number(s.slice(0, 2)) * 60 + Number(s.slice(3, 5));
+  const n = toMin(nowText), a = toMin(w.startTime), b = toMin(w.endTime);
+  const timeAllowed = a <= b ? (n >= a && n <= b) : (n >= a || n <= b);
+  const today = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const dateAllowed = (!w.startDate || today >= w.startDate) && (!w.endDate || today <= w.endDate);
+  const allowed = timeAllowed && dateAllowed;
+  let message = '';
+  if (!dateAllowed) message = 'Diem danh chi mo tu ' + (w.startDate || 'khong gioi han') + ' den ' + (w.endDate || 'khong gioi han') + ' (gio may chu).';
+  else if (!timeAllowed) message = 'Chi duoc diem danh trong khung gio ' + w.startTime + ' - ' + w.endTime + ' (gio may chu).';
+  return { allowed: allowed, startTime: w.startTime, endTime: w.endTime, startDate: w.startDate, endDate: w.endDate,
+    serverNow: nowText, serverToday: today, message: message };
+}
+
+function assertCheckinAllowed_(now) {
+  const info = getCheckinWindowInfo_();
+  if (!info.allowed) throw new Error(info.message);
+}
+
+
+function processAdminSaveWindow_(payload) {
+  requireAdminSession_(payload.session);
+  const startDate = String(payload.startDate || '').trim();
+  const endDate = String(payload.endDate || '').trim();
+  const startTime = String(payload.startTime || '').trim();
+  const endTime = String(payload.endTime || '').trim();
+  if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) throw new Error('Ngay bat dau khong hop le.');
+  if (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) throw new Error('Ngay ket thuc khong hop le.');
+  if (startDate && endDate && startDate > endDate) throw new Error('Ngay ket thuc phai bang hoac sau ngay bat dau.');
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)) {
+    throw new Error('Gio bat dau/ket thuc phai dung dinh dang HH:mm.');
+  }
+  const props = PropertiesService.getScriptProperties();
+  props.setProperties({ CHECKIN_START_TIME: startTime, CHECKIN_END_TIME: endTime });
+  if (startDate) props.setProperty('CHECKIN_START_DATE', startDate); else props.deleteProperty('CHECKIN_START_DATE');
+  if (endDate) props.setProperty('CHECKIN_END_DATE', endDate); else props.deleteProperty('CHECKIN_END_DATE');
+  return { status: 'SUCCESS', message: 'Da luu gio va ngay gioi han diem danh.' };
 }
 
 function processAdminLogin_(payload) {
@@ -181,6 +350,7 @@ function getAdminData_() {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sh = getEmployeeSheet_(ss);
   const tokenSheet = getTokenSheet_(ss);
+  syncNewEmployeesToTokens_(ss, sh, tokenSheet);
   const last = sh.getLastRow();
   const tz = Session.getScriptTimeZone();
   const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
@@ -190,6 +360,16 @@ function getAdminData_() {
     ? sh.getRange(CONFIG.FIRST_DATA_ROW, CONFIG.TIME_COL, last - CONFIG.FIRST_DATA_ROW + 1, 1).getValues() : [];
   const photoValues = last >= CONFIG.FIRST_DATA_ROW
     ? sh.getRange(CONFIG.FIRST_DATA_ROW, CONFIG.PHOTO_COL, last - CONFIG.FIRST_DATA_ROW + 1, 1).getDisplayValues() : [];
+  const log = getLogSheet_(ss);
+  const logLast = log.getLastRow();
+  const latestLog = {};
+  if (logLast >= 2) {
+    const logRows = log.getRange(2, 1, logLast - 1, 8).getValues();
+    logRows.forEach((r, idx) => {
+      const code = String(r[1] || '').trim();
+      if (code && String(r[6]) === 'SUCCESS') latestLog[code] = { requestId: String(r[0] || ''), time: r[3] instanceof Date ? r[3].getTime() : 0 };
+    });
+  }
   const tokenLast = tokenSheet.getLastRow();
   const tokenRows = tokenLast >= 2 ? tokenSheet.getRange(2, 1, tokenLast - 1, 4).getDisplayValues() : [];
   const tokenMap = {};
@@ -211,10 +391,13 @@ function getAdminData_() {
       active: qr.active,
       checkedIn: checkedIn,
       time: checkinValue instanceof Date ? Utilities.formatDate(checkinValue, tz, 'dd/MM/yyyy HH:mm:ss') : '',
-      photoUrl: String(photoValues[i][0] || '')
+      photoUrl: String(photoValues[i][0] || ''),
+      latestCheckinRequestId: latestLog[code] ? latestLog[code].requestId : ''
     });
   });
-  return { status: 'SUCCESS', today: today, stats: { total: employees.length, active: activeCount, attended: attended, absent: employees.length - attended }, employees: employees, pageUrl: CONFIG.PUBLIC_PAGE_URL };
+  const windowInfo = getCheckinWindowInfo_();
+  return { status: 'SUCCESS', today: today, stats: { total: employees.length, active: activeCount, attended: attended, absent: employees.length - attended },
+    employees: employees, pageUrl: CONFIG.PUBLIC_PAGE_URL, checkinWindow: windowInfo };
 }
 
 function findEmployeeByToken_(token) {

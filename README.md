@@ -71,3 +71,51 @@ Tab tự tạo `CHECKIN_LOG`: RequestID, MaNV, HoTen, ThoiGian, DriveFileID, Anh
 4. Thử từ chối quyền camera, mất mạng, ảnh quá lớn, Drive hết quyền.
 5. Xác nhận ảnh thực sự có trong Drive, cột E/F được ghi, `CHECKIN_LOG` có đúng một dòng thành công.
 6. Kiểm tra CSV, QR tải về và quyền xem ảnh từ tài khoản quản trị.
+
+
+## 8. Các cập nhật bổ sung trong bản nâng cấp
+
+### Đồng bộ nhân viên mới
+- Mỗi lần admin mở/tải lại bảng điều khiển, máy chủ đối chiếu danh sách nhân viên với `QR_TOKENS`.
+- Mã nhân viên chưa có token sẽ được tự cấp token mới và trạng thái `ACTIVE`.
+- Token và trạng thái QR của nhân viên đã tồn tại được giữ nguyên. Tên được cập nhật theo danh sách nhân viên.
+
+### Giới hạn giờ điểm danh
+Trong Apps Script → Project Settings → Script Properties, cấu hình:
+- `CHECKIN_START_TIME` = giờ bắt đầu, định dạng `HH:mm`.
+- `CHECKIN_END_TIME` = giờ kết thúc, định dạng `HH:mm`.
+
+Mặc định nếu chưa cấu hình: `08:00` đến `22:00` (giờ máy chủ Apps Script, cần đặt timezone `Asia/Ho_Chi_Minh`). Hỗ trợ khung giờ qua đêm, ví dụ `20:00` đến `02:00`. Giao diện đọc khung giờ từ máy chủ để thông báo/chặn thao tác; máy chủ tự kiểm tra lại trước khi lưu nên không thể bỏ qua bằng cách sửa JavaScript trên trình duyệt.
+
+### Admin chụp ảnh thay nhân viên
+- Trong bảng nhân viên, chọn **Chụp thay**.
+- Cho phép camera, chụp và xác nhận. Yêu cầu gửi lên máy chủ gồm session admin và mã nhân viên đang chọn.
+- Ảnh lưu Drive; cột E:F và `CHECKIN_LOG` ghi đúng mã nhân viên.
+- Áp dụng giới hạn giờ và chống điểm danh trùng trong ngày giống lượt tự điểm danh.
+
+### Hủy lượt điểm danh nhưng giữ lịch sử
+- Chọn **Hủy lượt** ở dòng nhân viên đã điểm danh.
+- Máy chủ chuyển `CHECKIN_LOG.TrangThai` từ `SUCCESS` sang `VOIDED`, ghi chú `ADMIN_VOIDED`.
+- Không xóa dòng log và không xóa file ảnh trên Drive. Cột E:F chỉ được xóa nếu lượt bị hủy vẫn là lượt mới nhất đang hiển thị trên danh sách.
+- Nếu cần điểm danh lại trong ngày, admin hủy lượt cũ rồi thực hiện chụp thay; nhân viên cũng có thể điểm danh lại nếu còn trong khung giờ và QR hợp lệ.
+
+### Loading và đường dẫn
+- Trang admin có overlay loading khi tải dữ liệu, đăng nhập và thực hiện thao tác cập nhật.
+- Admin có liên kết mở trang điểm danh công khai và liên kết trang quản trị `?admin=1`.
+- Đường dẫn trang công khai vẫn lấy từ `PUBLIC_PAGE_URL` trong `Code.gs`.
+
+### Cập nhật triển khai
+1. Thay `Code.gs` trong Apps Script bằng bản mới và lưu.
+2. Thêm Script Properties khung giờ nếu muốn dùng khung giờ khác mặc định.
+3. Deploy → Manage deployments → Edit → New version.
+4. Đưa `index.html` mới lên GitHub Pages.
+5. Kiểm tra admin tự đồng bộ nhân viên mới, thử ngoài/trong khung giờ, chụp thay, hủy lượt và kiểm tra `CHECKIN_LOG`/Drive.
+
+
+### Cấu hình giới hạn ngày ngay trong Dashboard Admin
+- Dashboard có mục **Cấu hình thời gian điểm danh** với ngày bắt đầu, ngày kết thúc, giờ bắt đầu và giờ kết thúc.
+- Ngày bắt đầu/kết thúc là tùy chọn; để trống một phía nghĩa là không giới hạn phía đó. Nếu cả hai để trống thì chỉ áp dụng giới hạn giờ.
+- Ngày bắt đầu và ngày kết thúc đều được tính bao gồm. Ví dụ 2026-12-01 đến 2026-12-03 cho phép điểm danh trong cả ba ngày.
+- Nhấn **Lưu giới hạn**. Cấu hình được lưu trong Script Properties và được máy chủ kiểm tra lại mỗi lần nhận điểm danh (cả nhân viên tự điểm danh và admin chụp thay).
+- Có thể xóa một giới hạn ngày bằng cách xóa giá trị ngày tương ứng rồi nhấn Lưu giới hạn.
+- Không cần sửa Script Properties thủ công cho ngày nữa. Giờ cũng có thể thay đổi ngay tại dashboard.
