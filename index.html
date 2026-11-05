@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Xác Thực Check-in Noel</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; background: #f7f9fa; padding: 15px; margin: 0; }
+    .container { max-width: 400px; margin: 20px auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+    h2 { color: #d9534f; margin-top: 0; }
+    .info { font-size: 15px; margin: 15px 0; color: #2c3e50; line-height: 1.6; background: #e8f5e9; padding: 12px; border-radius: 8px; border-left: 5px solid #2e7d32; text-align: left; }
+    button { width: 100%; padding: 14px; margin: 15px 0; border-radius: 8px; background: #d9534f; color: white; border: none; font-weight: bold; font-size: 16px; cursor: pointer; transition: 0.2s; }
+    button:disabled { background: #cccccc; cursor: not-allowed; }
+    #video { width: 100%; max-width: 320px; border-radius: 12px; background: #222; transform: scaleX(-1); box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+    #canvas { display: none; }
+    #loading { color: #d9534f; display: none; font-weight: bold; margin-top: 10px; }
+    .error { color: #c62828; font-weight: bold; background: #ffebee; padding: 15px; border-radius: 8px; display: none; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>🎄 XÁC THỰC CHECK-IN NOEL 🎄</h2>
+  
+  <div id="checkin-box">
+    <div class="info">
+      Mã số nhân viên: <strong id="txt-msnv">Đang tải...</strong>
+    </div>
+    
+    <p style="color: #555; font-size: 14px;">Vui lòng nhìn thẳng vào camera và mỉm cười:</p>
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas" width="480" height="640"></canvas>
+    
+    <button id="btn-snap" onclick="captureAndUpload()">BẤM ĐỂ CHỤP & VÀO TIỆC</button>
+    <p id="loading">Đang tải ảnh và điểm danh, vui lòng đợi...⏳</p>
+  </div>
+
+  <p id="error-box" class="error">❌ Không tìm thấy mã nhân viên hợp lệ trên đường link quét mã!</p>
+</div>
+
+<script>
+  // Link Google Web App của bạn
+  const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzpzsF1OM8fw8aucAnWOQ9vVgf9Z7tIWXBbILJ2-DZ0bY8xGXUDnRnYNu2YihXKo3EkSw/exec";
+  
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const loading = document.getElementById('loading');
+  const btnSnap = document.getElementById('btn-snap');
+  
+  // Tự động bóc tách tham số id từ URL của GitHub (Ví dụ: ...github.io?id=NV001)
+  const urlParams = new URLSearchParams(window.location.search);
+  const msnv = urlParams.get('id');
+
+  if (!msnv) {
+    document.getElementById('checkin-box').style.display = 'none';
+    document.getElementById('error-box').style.display = 'block';
+  } else {
+    document.getElementById('txt-msnv').innerText = msnv;
+    // Mở camera selfie
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
+      .then(stream => { video.srcObject = stream; })
+      .catch(err => { 
+        alert("Trình duyệt cần quyền truy cập Camera để check-in. Nếu dùng Zalo, vui lòng bấm nút 3 chấm góc trên bên phải chọn 'Mở bằng Safari/Chrome'!"); 
+      });
+  }
+
+  function captureAndUpload() {
+    btnSnap.disabled = true;
+    loading.style.display = "block";
+
+    const context = canvas.getContext('2d');
+    context.drawImage(video, 0, 0, 480, 640);
+    const imageData = canvas.toDataURL('image/jpeg', 0.75); // Nén ảnh 75%
+
+    // Gửi dữ liệu qua Google Script bằng phương thức POST vượt rào CORS
+    fetch(WEB_APP_URL, {
+      method: "POST",
+      mode: "no-cors", // Bắt buộc phải có để tránh lỗi bảo mật chéo của Google
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ msnv: msnv, image: imageData })
+    })
+    .then(() => {
+      alert("Đã gửi thông tin điểm danh lên hệ thống! Chúc bạn dự tiệc vui vẻ 🎉");
+      loading.style.display = "none";
+      btnSnap.disabled = false;
+    })
+    .catch(err => {
+      alert("Lỗi kết nối mạng: " + err.toString());
+      loading.style.display = "none";
+      btnSnap.disabled = false;
+    });
+  }
+</script>
+
+</body>
+</html>
