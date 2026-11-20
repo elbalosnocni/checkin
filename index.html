@@ -82,6 +82,9 @@
   </div>
 
   <script>
+    // DÁN LINK WEB APP GOOGLE APPS SCRIPT CỦA BẠN VÀO DÒNG DƯỚI ĐÂY
+    const GAS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzpzsF1OM8fw8aucAnWOQ9vVgf9Z7tIWXBbILJ2-DZ0bY8xGXUDnRnYNu2YihXKo3EkSw/exec';
+
     let stream = null;
     let rotationDeg = 0;
     let foundInList = false;
@@ -108,7 +111,6 @@
       document.getElementById('status').innerText = 'Trạng thái: ' + msg;
     }
 
-    // Vẽ ảnh từ video lên canvas theo góc xoay + tăng tương phản giúp đọc cả chữ trắng trên nền đỏ/tím
     function renderProcessedCanvas(video, deg) {
       const canvas = document.getElementById('canvas');
       const ctx = canvas.getContext('2d');
@@ -168,20 +170,14 @@
 
       document.getElementById('rawOcr').value = bestText.trim();
       setStatus('Đọc thẻ xong. Đang dò trên Google Sheet...');
-      apDungVaDoSheet(parsed, bestText);
+      await apDungVaDoSheet(parsed, bestText);
     }
 
-    /**
-     * Tách dữ liệu theo đúng bố cục 3 mẫu thẻ Liwayway:
-     * - Cụm mã: PR7155 (7000), PL1305 (7235), HR028 (5420)
-     * - Họ tên in hoa ngay bên dưới tên công ty (bỏ qua dòng chức vụ: CÔNG NHÂN..., NHÂN VIÊN...)
-     */
     function tachThongTinTheLiwayway(rawText) {
       let maNV = '';
       let maChamCong = '';
       let hoTen = '';
 
-      // 1. Bắt cụm MÃ NV (MÃ CHẤM CÔNG) — VD: PR7155 (7000), PL1305 (7235), HR028 (5420)
       const comboRegex = /\b([A-Z]{2}\s*\d{3,5})\s*[\(\[\{]\s*(\d{3,6})\s*[\)\]\}]/i;
       const comboMatch = rawText.match(comboRegex);
 
@@ -189,14 +185,12 @@
         maNV = comboMatch[1].replace(/\s+/g, '').toUpperCase();
         maChamCong = comboMatch[2].trim();
       } else {
-        // Dự phòng nếu OCR mất dấu ngoặc đơn
         const nvOnly = rawText.match(/\b([A-Z]{2}\s*\d{3,5})\b/i);
         const ccOnly = rawText.match(/[\(\[]\s*(\d{3,6})\s*[\)\]]/);
         if (nvOnly) maNV = nvOnly[1].replace(/\s+/g, '').toUpperCase();
         if (ccOnly) maChamCong = ccOnly[1].trim();
       }
 
-      // 2. Bắt Họ tên (dòng chữ in hoa có dấu tiếng Việt, loại trừ tên công ty & chức danh)
       const ignoreKeywords = [
         'CONG TY', 'CÔNG TY', 'CO PHAN', 'CỔ PHẦN', 'LIWAYWAY', 'VIET NAM', 'VIỆT NAM',
         'CONG NHAN', 'CÔNG NHÂN', 'SAN XUAT', 'SẢN XUẤT', 'VAN HANH', 'VẬN HÀNH',
@@ -212,7 +206,6 @@
         const upper = line.toUpperCase();
         const isIgnored = ignoreKeywords.some(kw => upper.includes(kw));
         const words = upper.split(' ').filter(Boolean);
-        // Tên người thường có từ 2 đến 5 từ
         if (!isIgnored && words.length >= 2 && words.length <= 5) {
           hoTen = upper;
           break;
@@ -222,44 +215,52 @@
       return { maNV, maChamCong, hoTen };
     }
 
-    function xuLyVaDoSheet(text) {
+    async function xuLyVaDoSheet(text) {
       const parsed = tachThongTinTheLiwayway(text);
-      apDungVaDoSheet(parsed, text);
+      await apDungVaDoSheet(parsed, text);
     }
 
-    function apDungVaDoSheet(parsed, rawText) {
+    async function apDungVaDoSheet(parsed, rawText) {
       document.getElementById('maNV').value = parsed.maNV || '';
       document.getElementById('maChamCong').value = parsed.maChamCong || '';
       document.getElementById('hoTen').value = parsed.hoTen || '';
 
-      google.script.run.withSuccessHandler(res => {
-        const badge = document.getElementById('matchBadge');
+      const badge = document.getElementById('matchBadge');
+      try {
+        const params = new URLSearchParams({
+          action: 'lookup',
+          maNV: parsed.maNV || '',
+          maChamCong: parsed.maChamCong || '',
+          hoTen: parsed.hoTen || '',
+          rawText: rawText || ''
+        });
+
+        const response = await fetch(`${GAS_WEBAPP_URL}?${params.toString()}`);
+        const res = await response.json();
+
         if (res.found) {
           foundInList = true;
-          // Đồng bộ lại thông tin chuẩn từ Google Sheet
           document.getElementById('hoTen').value = res.hoTen;
           document.getElementById('maNV').value = res.maNV;
           document.getElementById('maChamCong').value = res.maChamCong;
           document.getElementById('caLamViec').value = res.caLamViec;
 
           badge.className = 'badge ok';
-badge.innerText = ✓ Có trong danh sách | Ca làm việc: ${res.caLamViec};
-} else {
-foundInList = false;
-document.getElementById('caLamViec').value = '';
+          badge.innerText = `✓ Có trong danh sách | Ca làm việc: ${res.caLamViec}`;
+        } else {
+          foundInList = false;
+          document.getElementById('caLamViec').value = '';
 badge.className = 'badge warn';
 badge.innerText = '✕ Không tìm thấy nhân viên trong danh sách (DanhSachNV)';
 }
 setStatus('Hoàn tất kiểm tra danh sách.');
-}).traCuuNhanVien({
-maNV: parsed.maNV,
-maChamCong: parsed.maChamCong,
-hoTen: parsed.hoTen,
-rawText: rawText
-});
+} catch (err) {
+setStatus('Lỗi kết nối Google Sheet: ' + err.message);
 }
-function luuChamCong() {
+}
+async function luuChamCong() {
 const payload = {
+action: 'save',
 foundInList,
 hoTen: document.getElementById('hoTen').value.trim(),
 maNV: document.getElementById('maNV').value.trim(),
@@ -270,8 +271,22 @@ if (!payload.maNV && !payload.maChamCong && !payload.hoTen) {
 alert('Chưa có thông tin nhân viên để lưu.');
 return;
 }
-document.getElementById('saveMsg').innerText = 'Đang ghi vào Google Sheet...';
-google.script.run.withSuccessHandler(res => {
-document.getElementById('saveMsg').innerText = ✓ Đã ghi lúc ${res.time} — Trạng thái: ${res.status};
-}).ghiChamCong(payload);
+const saveMsg = document.getElementById('saveMsg');
+saveMsg.innerText = 'Đang ghi vào Google Sheet...';
+try {
+// Dùng text/plain để tránh trình duyệt chặn CORS Preflight khi gọi GAS từ GitHub Pages
+const response = await fetch(GAS_WEBAPP_URL, {
+method: 'POST',
+headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+body: JSON.stringify(payload)
+});
+const res = await response.json();
+if (res.success) {
+saveMsg.innerText = ✓ Đã ghi lúc ${res.time} — Trạng thái: ${res.status};
+} else {
+saveMsg.innerText = 'Lỗi ghi dữ liệu: ' + (res.error || 'Không xác định');
+}
+} catch (err) {
+saveMsg.innerText = 'Lỗi kết nối khi lưu: ' + err.message;
+}
 }
