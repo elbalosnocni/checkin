@@ -6,7 +6,7 @@ Nội dung gói
 - README-HUONG-DAN.txt: hướng dẫn cấu hình và triển khai.
 
 CẤU HÌNH ĐANG GIỮ THEO BẢN CŨ
-- SPREADSHEET_ID: 1vBk4eHERPAQcAe3OLCGtwk5PlGRy1IYi3JHyFPe9-3M
+- SPREADSHEET_ID: 1vBk4eHERPAQcAe3OLCGtwk5PlGRy1YIi3JHyFPe9-3M
 - Tab danh sách: DanhSachNV
 - Tab chấm công: ChamCong
 - DRIVE_FOLDER_ID: 19vAyddEQZtNlfjgQO2wR-1MtzxFCrSLt
@@ -14,7 +14,7 @@ CẤU HÌNH ĐANG GIỮ THEO BẢN CŨ
 
 LƯU Ý QUAN TRỌNG VỀ LỖI SPREADSHEET
 Bạn chọn dùng lại Google Sheet cũ, vì vậy gói này giữ nguyên ID cũ. Tuy nhiên, ảnh chụp màn hình đã báo:
-"Illegal spreadsheet id or key: 1vBk4eHERPAQcAe3OLCGtwk5PlGRy1IYi3JHyFPe9-3M"
+"Illegal spreadsheet id or key: 1vBk4eHERPAQcAe3OLCGtwk5PlGRy1YIi3JHyFPe9-3M"
 Không thể khẳng định chỉ bằng mã nguồn rằng ID này hợp lệ hay tài khoản Apps Script có quyền. Nếu ID thực sự sai hoặc tài khoản triển khai không được chia sẻ quyền, ứng dụng vẫn không thể tra cứu/ghi vào Sheet. Hãy xác nhận ID từ URL Google Sheet và cấp quyền Editor cho tài khoản đang chạy Apps Script trước khi triển khai.
 
 CẤU TRÚC GOOGLE SHEET
