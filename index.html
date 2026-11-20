@@ -66,7 +66,7 @@
   </div>
 
 <script>
-const GAS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxJ4U4pa4a4GOCUVcLK-oTYjkqapUxl-GkXyoYjoBaYrRDj-Du01RlIGe7GXVLTCxty0g/exec';
+const GAS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzpzsF1OM8fw8aucAnWOQ9vVgf9Z7tIWXBbILJ2-DZ0bY8xGXUDnRnYNu2YihXKo3EkSw/exec';
 let cameraStream = null;
 let bestRotationDeg = 0;
 let foundInList = false;
@@ -159,7 +159,8 @@ async function chupVaNhanDien() {
       const result = await worker.recognize(canvas);
       const text = result.data.text || '';
       const candidate = tachThongTinTheLiwayway(text);
-      const score = scoreCandidate(candidate);
+      const confidence = Number(result.data.confidence || 0);
+      const score = scoreCandidate(candidate, confidence);
       if (score > bestScore) {
         bestScore = score; bestText = text; bestCandidate = candidate; bestAngle = angle;
       }
@@ -167,30 +168,36 @@ async function chupVaNhanDien() {
     bestRotationDeg = bestAngle;
     await renderProcessedCanvas(capturedImageData, bestRotationDeg);
     $('rawOcr').value = bestText.trim();
-    setStatus(`Đã đọc đủ 4 hướng; kết quả tốt nhất ở góc ${bestAngle}°. Đang dò danh sách...`);
+    if (!bestCandidate || (!bestCandidate.maNV && !bestCandidate.maChamCong)) {
+      $('matchBadge').className = 'badge warn';
+      $('matchBadge').textContent = 'OCR chưa đọc chắc chắn được mã. Hãy đưa thẻ gần camera, tránh lóa và chụp lại.';
+      setStatus('Đã thử 4 hướng nhưng chưa nhận diện được mã. Vui lòng chụp lại.');
+      return;
+    }
+    setStatus(`Đã thử 4 hướng; chọn góc ${bestAngle}° theo độ tin cậy OCR. Đang đối chiếu danh sách...`);
     await apDungVaDoSheet(bestCandidate || {}, bestText);
   } catch (err) {
     setStatus('Lỗi OCR: ' + err.message);
   } finally { setBusy(false); }
 }
 
-function scoreCandidate(c) {
-  if (!c) return 0;
-  return (c.maNV ? 8 : 0) + (c.maChamCong ? 8 : 0) + (c.hoTen ? 2 : 0);
+function scoreCandidate(c, confidence) {
+  if (!c) return -1;
+  let score = Math.max(0, Math.min(100, Number(confidence) || 0));
+  if (c.maNV) score += 18;
+  if (c.maChamCong) score += 14;
+  if (c.hoTen) score += 4;
+  if (c.maNV && c.maChamCong) score += 8;
+  return score;
 }
 
 function tachThongTinTheLiwayway(rawText) {
   let maNV = '', maChamCong = '', hoTen = '';
-  const combo = rawText.match(/\b([A-Z]{2}\s*\d{3,5})\s*[\(\[\{]\s*(\d{3,6})\s*[\)\]\}]/i);
-  if (combo) {
-    maNV = combo[1].replace(/\s+/g,'').toUpperCase();
-    maChamCong = combo[2].trim();
-  } else {
-    const nv = rawText.match(/\b([A-Z]{2}\s*\d{3,5})\b/i);
-    const cc = rawText.match(/[\(\[]\s*(\d{3,6})\s*[\)\]]/);
-    if (nv) maNV = nv[1].replace(/\s+/g,'').toUpperCase();
-    if (cc) maChamCong = cc[1].trim();
-  }
+  const normalized = String(rawText || '').toUpperCase();
+  const nv = normalized.match(/\\b([A-Z])\\s*[-.]?\\s*([A-Z])\\s*[-.]?\\s*(\\d(?:[\\s.-]*\\d){2,4})\\b/);
+  const cc = normalized.match(/[\\(\\[\\{]\\s*(\\d(?:[\\s.-]*\\d){2,5})\\s*[\\)\\]\\}]/);
+  if (nv) maNV = (nv[1] + nv[2] + nv[3]).replace(/[\\s.-]/g, '');
+  if (cc) maChamCong = cc[1].replace(/[\\s.-]/g, '');
   const ignore = ['CONG TY','CÔNG TY','CO PHAN','CỔ PHẦN','LIWAYWAY','VIET NAM','VIỆT NAM',
     'CONG NHAN','CÔNG NHÂN','SAN XUAT','SẢN XUẤT','VAN HANH','VẬN HÀNH','BAO BI','BAO BÌ',
     'NHAN VIEN','NHÂN VIÊN','OFFICE','STAFF','NHAN SU','NHÂN SỰ','CAP LAN','CẤP LẦN'];

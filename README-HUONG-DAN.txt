@@ -61,3 +61,11 @@ GIỚI HẠN / KIỂM THỬ
 - Bốn hướng OCR tăng khả năng đọc thẻ xoay ngang/dọc nhưng có thể làm thời gian quét lâu hơn.
 - Gói mã nguồn không thể tự sửa quyền Google Sheet/Drive hoặc xác minh ID khi chưa có quyền truy cập file thực tế.
 - Nên thử trước với bản sao dữ liệu hoặc một số bản ghi kiểm thử.
+
+
+CẢI TIẾN ỔN ĐỊNH OCR
+- So sánh kết quả 4 hướng bằng confidence của Tesseract, cộng điểm có kiểm soát cho các trường mã và tên.
+- Không chỉ chọn góc đầu tiên có chuỗi giống mã.
+- Chấp nhận một số khoảng trắng/dấu chấm/dấu gạch OCR chèn giữa mã.
+- Nếu không đọc được mã ở cả bốn hướng, yêu cầu chụp lại thay vì đoán.
+- OCR vẫn phụ thuộc độ nét, ánh sáng, lóa và kích thước thẻ; cần thử nghiệm với thẻ thực tế.
