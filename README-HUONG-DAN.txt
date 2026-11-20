@@ -1,28 +1,63 @@
-# Github Check-in – bản tối ưu
+GITHUB CHECK-IN – BẢN NÂNG CẤP
 
-## File
-- `Code.gs`: Google Apps Script backend.
-- `index.html`: giao diện GitHub Pages, camera và OCR.
+Nội dung gói
+- Code.gs: Google Apps Script backend.
+- index.html: giao diện GitHub Pages, camera và OCR.
+- README-HUONG-DAN.txt: hướng dẫn cấu hình và triển khai.
 
-## Cấu hình trước khi chạy
-1. Mở Apps Script đang dùng cho web chấm công.
-2. Thay toàn bộ nội dung `Code.gs` bằng file mới trong gói này.
-3. Kiểm tra `SPREADSHEET_ID` đúng Google Sheet hiện tại.
-4. Kiểm tra `DRIVE_FOLDER_ID` đang là `19vAyddEQZtNlfjgQO2wR-1MtzxFCrSLt` (thư mục Drive bạn cung cấp).
-5. Lưu dự án. Chạy thủ công hàm `lamMoiCacheNhanVien` một lần (nếu được yêu cầu cấp quyền, chấp thuận quyền Google Sheets và Google Drive).
-6. Vào **Deploy > Manage deployments > Edit** deployment Web app hiện tại, chọn **New version** rồi Deploy. Nếu Apps Script hỏi quyền Drive, cấp quyền cho đúng tài khoản sở hữu/chạy web app.
-7. Thay `index.html` trên GitHub Pages bằng file mới. Đợi GitHub Pages cập nhật rồi tải lại trình duyệt (Ctrl+F5).
+CẤU HÌNH ĐANG GIỮ THEO BẢN CŨ
+- SPREADSHEET_ID: 1vBk4eHERPAQcAe3OLCGtwk5PlGRy1IYi3JHyFPe9-3M
+- Tab danh sách: DanhSachNV
+- Tab chấm công: ChamCong
+- DRIVE_FOLDER_ID: 19vAyddEQZtNlfjgQO2wR-1MtzxFCrSLt
+- Múi giờ: Asia/Ho_Chi_Minh
 
-## Cách hoạt động
-- Danh sách nhân viên được đọc theo 4 cột A:D của tab `DanhSachNV`; cache tối đa 60 giây để giảm truy cập Sheet.
-- Ảnh camera được chụp ở kích thước tối đa 1280 px và nén JPEG trước khi gửi.
-- Khi bấm **Xác nhận & Ghi chấm công**, Apps Script lưu ảnh vào thư mục Drive đã cấu hình và ghi URL ảnh vào cột có tiêu đề `AnhChupURL` của tab `ChamCong`. Nếu chưa có cột này, hệ thống thêm ở cuối bảng, không ghi đè cột đang có.
-- Ảnh trong Drive kế thừa quyền chia sẻ của thư mục. Gói code không tự bật chia sẻ công khai.
-- OCR dùng Tesseract.js tiếng Việt + tiếng Anh; worker được tái sử dụng trong phiên trang để tránh khởi tạo lại mỗi lần quét.
+LƯU Ý QUAN TRỌNG VỀ LỖI SPREADSHEET
+Bạn chọn dùng lại Google Sheet cũ, vì vậy gói này giữ nguyên ID cũ. Tuy nhiên, ảnh chụp màn hình đã báo:
+"Illegal spreadsheet id or key: 1vBk4eHERPAQcAe3OLCGtwk5PlGRy1IYi3JHyFPe9-3M"
+Không thể khẳng định chỉ bằng mã nguồn rằng ID này hợp lệ hay tài khoản Apps Script có quyền. Nếu ID thực sự sai hoặc tài khoản triển khai không được chia sẻ quyền, ứng dụng vẫn không thể tra cứu/ghi vào Sheet. Hãy xác nhận ID từ URL Google Sheet và cấp quyền Editor cho tài khoản đang chạy Apps Script trước khi triển khai.
 
-## Lưu ý
-- Tài khoản thực thi Apps Script phải có quyền **Editor** đối với thư mục Drive đích.
-- Chạy camera trên HTTPS (GitHub Pages đáp ứng điều kiện này).
-- Lần OCR đầu tiên có thể lâu hơn vì trình duyệt phải tải mô hình ngôn ngữ; các lần sau trong cùng phiên thường nhanh hơn.
-- Nếu không thấy ảnh trên Drive, kiểm tra quyền truy cập thư mục của tài khoản đang thực thi Web App và xem lỗi tại Apps Script > Executions.
-- Cache danh sách nhân viên tự hết hạn sau 60 giây. Khi cần cập nhật ngay, chạy `lamMoiCacheNhanVien`.
+CẤU TRÚC GOOGLE SHEET
+Tab DanhSachNV phải có dữ liệu từ dòng 2, đúng thứ tự:
+A: MaNV
+B: HoTen
+C: MaChamCong
+D: CaLamViec
+
+Tab ChamCong sẽ được tạo tự động nếu chưa có. Các cột ghi:
+ThoiGian, MaNV, Hoten, Machamcong, CaLamViec, TrangThai, AnhChupURL.
+Nếu tab đã tồn tại, code tìm cột AnhChupURL theo tiêu đề; nếu chưa có sẽ thêm cột ở cuối.
+
+CÁC THAY ĐỔI CHÍNH
+1. Bỏ nút xoay thủ công. Khi quét, trình duyệt OCR lần lượt cả bốn hướng 0°, 90°, 180°, 270°; chọn kết quả có điểm nhận diện cao nhất, không dừng ngay khi vừa tìm thấy một mã.
+2. Đối chiếu mã nhân viên và mã chấm công. Nếu hai mã khớp với hai người khác nhau, hệ thống báo xung đột và không tự chọn một người.
+3. Nếu có mã nhưng không tìm thấy trong Sheet, không dùng tên OCR để ghi đè kết quả mã.
+4. Cho phép xác nhận thủ công khi không tìm thấy nhân viên. Giao diện hiển thị cảnh báo và yêu cầu người dùng xác nhận. Backend tự tra cứu lại; bản ghi được gắn trạng thái "XÁC NHẬN THỦ CÔNG - CHƯA XÁC MINH".
+5. Backend không tin cậy cờ foundInList từ trình duyệt; tự đối chiếu lại trước khi ghi.
+6. Thêm endpoint kiểm tra cấu hình: mở URL Web App với ?action=health để xem Apps Script có mở được Spreadsheet, tab DanhSachNV và thư mục Drive hay không.
+7. Phát hiện và trả cảnh báo mã nhân viên/mã chấm công trùng trong danh sách.
+
+CÁCH TRIỂN KHAI
+1. Mở đúng dự án Google Apps Script đang gắn với Web App.
+2. Thay toàn bộ Code.gs bằng Code.gs trong gói này, lưu lại.
+3. Trong Apps Script, chọn hàm lamMoiCacheNhanVien và chạy một lần. Chấp thuận quyền Sheets và Drive nếu được hỏi.
+4. Chọn hàm kiemTraCauHinh và chạy để kiểm tra. Nếu báo lỗi openById, xác minh ID và quyền truy cập.
+5. Deploy > Manage deployments > Edit > chọn New version > Deploy. Nếu dùng URL deployment cũ, giữ nguyên URL Web App hiện tại.
+6. Thay index.html trên GitHub Pages bằng file trong gói, commit/push và chờ Pages cập nhật.
+7. Mở URL Web App thêm ?action=health (hoặc &action=health nếu URL đã có tham số). Kết quả success:true là điều kiện cần trước khi kiểm thử toàn bộ luồng.
+8. Tải lại GitHub Pages, cấp quyền camera, thử các thẻ mẫu và kiểm tra bản ghi trong ChamCong cùng ảnh trong thư mục Drive.
+
+QUY TRÌNH SỬ DỤNG
+- Bấm Bật Camera.
+- Đặt thẻ trong khung và bấm Chụp & Đọc Thẻ.
+- Hệ thống thử 4 hướng ảnh, hiển thị thông tin OCR và kết quả tra cứu.
+- Nếu tra cứu được nhân viên, kiểm tra lại tên, mã và ca trước khi xác nhận.
+- Nếu không tìm thấy, người dùng có thể sửa thông tin. Khi bấm xác nhận, ứng dụng hỏi xác nhận thủ công và ghi trạng thái CHƯA XÁC MINH.
+- Nếu mã nhân viên và mã chấm công mâu thuẫn, backend từ chối ghi để tránh ghi nhầm người.
+
+GIỚI HẠN / KIỂM THỬ
+- OCR vẫn có thể đọc sai do ảnh mờ, lóa, thẻ nhỏ hoặc font in; cần kiểm tra thông tin trước khi chấm công.
+- Xác nhận thủ công là cơ chế ngoại lệ, không có nghĩa là danh tính đã được xác thực.
+- Bốn hướng OCR tăng khả năng đọc thẻ xoay ngang/dọc nhưng có thể làm thời gian quét lâu hơn.
+- Gói mã nguồn không thể tự sửa quyền Google Sheet/Drive hoặc xác minh ID khi chưa có quyền truy cập file thực tế.
+- Nên thử trước với bản sao dữ liệu hoặc một số bản ghi kiểm thử.

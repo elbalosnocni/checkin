@@ -40,12 +40,11 @@
     </div>
     <div class="row">
       <button id="btnCamera" class="btn-cam" onclick="moCamera()">1. Bật Camera</button>
-      <button id="btnRotate" class="btn-rot" onclick="xoayKhungHinh()">Xoay (<span id="degLabel">0</span>°)</button>
       <button id="btnOCR" class="btn-ocr" onclick="chupVaNhanDien()">2. Chụp & Đọc Thẻ</button>
     </div>
     <div id="status">Trạng thái: Sẵn sàng</div>
     <canvas id="canvas" style="display:none"></canvas>
-    <p class="hint">Ảnh chụp sẽ được gửi lên thư mục Google Drive đã cấu hình khi bạn xác nhận ghi chấm công.</p>
+    <p class="hint">Hệ thống tự thử 4 hướng ảnh (0°, 90°, 180°, 270°). Ảnh chỉ được gửi lên Google Drive khi bạn xác nhận ghi chấm công.</p>
   </div>
 
   <div class="card">
@@ -69,7 +68,7 @@
 <script>
 const GAS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzpzsF1OM8fw8aucAnWOQ9vVgf9Z7tIWXBbILJ2-DZ0bY8xGXUDnRnYNu2YihXKo3EkSw/exec';
 let cameraStream = null;
-let rotationDeg = 0;
+let bestRotationDeg = 0;
 let foundInList = false;
 let capturedImageData = '';
 let ocrWorkerPromise = null;
@@ -79,7 +78,7 @@ const $ = id => document.getElementById(id);
 function setStatus(msg) { $('status').textContent = 'Trạng thái: ' + msg; }
 function setBusy(value) {
   busy = value;
-  ['btnCamera','btnRotate','btnOCR','btnSave'].forEach(id => $(id).disabled = value);
+  ['btnCamera','btnOCR','btnSave'].forEach(id => $(id).disabled = value);
 }
 
 async function moCamera() {
@@ -96,10 +95,6 @@ async function moCamera() {
   } catch (err) { setStatus('Không mở được camera: ' + err.message); }
 }
 
-function xoayKhungHinh() {
-  rotationDeg = (rotationDeg + 90) % 360;
-  $('degLabel').textContent = rotationDeg;
-}
 
 function makeCapture() {
   const video = $('video');
@@ -156,23 +151,23 @@ async function chupVaNhanDien() {
     setStatus('Đang chụp ảnh...');
     capturedImageData = makeCapture();
     const worker = await getOCRWorker();
-    const angles = [rotationDeg, (rotationDeg + 90) % 360, (rotationDeg + 270) % 360];
-    let bestText = '', bestCandidate = null;
-    for (let i = 0; i < angles.length; i++) {
-      setStatus(`Đang đọc thẻ (góc ${angles[i]}°)...`);
-      const canvas = await renderProcessedCanvas(capturedImageData, angles[i]);
+    const angles = [0, 90, 180, 270];
+    let bestText = '', bestCandidate = null, bestAngle = 0, bestScore = -1;
+    for (const angle of angles) {
+      setStatus(`Đang đọc thẻ tự động (góc ${angle}°)...`);
+      const canvas = await renderProcessedCanvas(capturedImageData, angle);
       const result = await worker.recognize(canvas);
       const text = result.data.text || '';
       const candidate = tachThongTinTheLiwayway(text);
-      if (!bestText || scoreCandidate(candidate) > scoreCandidate(bestCandidate)) {
-        bestText = text; bestCandidate = candidate;
-      }
-      if (candidate.maNV || candidate.maChamCong) {
-        rotationDeg = angles[i]; $('degLabel').textContent = rotationDeg; break;
+      const score = scoreCandidate(candidate);
+      if (score > bestScore) {
+        bestScore = score; bestText = text; bestCandidate = candidate; bestAngle = angle;
       }
     }
+    bestRotationDeg = bestAngle;
+    await renderProcessedCanvas(capturedImageData, bestRotationDeg);
     $('rawOcr').value = bestText.trim();
-    setStatus('Đã đọc thẻ. Đang dò danh sách nhân viên...');
+    setStatus(`Đã đọc đủ 4 hướng; kết quả tốt nhất ở góc ${bestAngle}°. Đang dò danh sách...`);
     await apDungVaDoSheet(bestCandidate || {}, bestText);
   } catch (err) {
     setStatus('Lỗi OCR: ' + err.message);
@@ -181,7 +176,7 @@ async function chupVaNhanDien() {
 
 function scoreCandidate(c) {
   if (!c) return 0;
-  return (c.maNV ? 5 : 0) + (c.maChamCong ? 5 : 0) + (c.hoTen ? 1 : 0);
+  return (c.maNV ? 8 : 0) + (c.maChamCong ? 8 : 0) + (c.hoTen ? 2 : 0);
 }
 
 function tachThongTinTheLiwayway(rawText) {
@@ -239,22 +234,32 @@ async function apDungVaDoSheet(parsed, rawText) {
     } else {
       $('caLamViec').value = '';
       badge.className = 'badge warn';
-      badge.textContent = res.error ? 'Lỗi tra cứu: ' + res.error : '✕ Không tìm thấy nhân viên trong danh sách (DanhSachNV).';
-      setStatus('Đã tra cứu xong.');
+      badge.textContent = res.error ? 'Cần kiểm tra: ' + res.error : 'Chưa xác minh được nhân viên trong DanhSachNV. Có thể nhập/sửa thông tin rồi xác nhận thủ công.';
+      setStatus('Tra cứu hoàn tất; chưa xác minh được nhân viên.');
     }
-  } catch (err) { setStatus('Lỗi kết nối Google Sheet: ' + err.message); }
+  } catch (err) {
+    $('caLamViec').value = '';
+    badge.className = 'badge warn';
+    badge.textContent = 'Lỗi kết nối Google Sheet: ' + err.message;
+    setStatus('Lỗi kết nối Google Sheet.');
+  }
 }
 
 async function luuChamCong() {
   if (busy) return;
   const payload = {
-    action:'save', foundInList,
+    action:'save',
     hoTen:$('hoTen').value.trim(), maNV:$('maNV').value.trim(),
     maChamCong:$('maChamCong').value.trim(), caLamViec:$('caLamViec').value.trim(),
     imageData:capturedImageData
   };
   if (!payload.maNV && !payload.maChamCong && !payload.hoTen) {
     alert('Chưa có thông tin nhân viên để lưu.'); return;
+  }
+  if (!foundInList) {
+    const ok = confirm('CẢNH BÁO: Nhân viên chưa được xác minh từ Google Sheet. Bạn có chắc muốn ghi nhận thủ công với trạng thái CHƯA XÁC MINH? Hãy kiểm tra lại họ tên và mã trước khi tiếp tục.');
+    if (!ok) return;
+    payload.manualConfirmed = 'true';
   }
   setBusy(true);
   $('saveMsg').textContent = 'Đang lưu chấm công và tải ảnh lên Google Drive...';
@@ -267,7 +272,7 @@ async function luuChamCong() {
     if (!response.ok) throw new Error('HTTP ' + response.status);
     const res = await response.json();
     if (!res.success) throw new Error(res.error || 'Không xác định');
-    $('saveMsg').textContent = `✓ Đã ghi lúc ${res.time} — ${res.status}` +
+    $('saveMsg').textContent = `${res.verified ? '✓' : '⚠'} Đã ghi lúc ${res.time} — ${res.status}` +
       (res.imageUrl ? ' — Ảnh đã lưu trên Google Drive: ' + res.imageUrl : ' — Không có ảnh đính kèm.');
     capturedImageData = '';
   } catch (err) {
