@@ -1,9 +1,9 @@
-GITHUB CHECK-IN – BẢN NÂNG CẤP
+GITHUB CHECK-IN – BẢN NÂNG CẤP V4 (TỐI ƯU NHẬN DIỆN THẺ)
 
 Nội dung gói
-- Code.gs: Google Apps Script backend.
+- Code.gs: Google Apps Script backend (dò nhân viên + ghi chấm công).
 - index.html: giao diện GitHub Pages, camera và OCR.
-- README-HUONG-DAN.txt: hướng dẫn cấu hình và triển khai.
+- README-HUONG-DAN.txt: file này.
 
 CẤU HÌNH ĐANG GIỮ THEO BẢN CŨ
 - SPREADSHEET_ID: 1vBk4eHERPAQcAe3OLCGtwk5PlGRy1YIi3JHyFPe9-3M
@@ -28,44 +28,44 @@ Tab ChamCong sẽ được tạo tự động nếu chưa có. Các cột ghi:
 ThoiGian, MaNV, Hoten, Machamcong, CaLamViec, TrangThai, AnhChupURL.
 Nếu tab đã tồn tại, code tìm cột AnhChupURL theo tiêu đề; nếu chưa có sẽ thêm cột ở cuối.
 
+NGUYÊN NHÂN "LÚC ĐỌC ĐƯỢC LÚC KHÔNG" (đã kiểm tra trên ảnh 3 loại thẻ PL / HR / PR)
+1. Chữ TRẮNG trên dải đỏ đậm (mã PL1305, PR7155) và chữ ĐEN trên nền trắng (mã HR028) cần 2 cách xử lý ảnh ngược nhau. Bản cũ chỉ dùng 1 cách.
+2. Bản cũ xử lý ảnh bằng ctx.filter: iPhone/Safari không hỗ trợ nên bị bỏ qua hoàn toàn.
+3. Ảnh bị thu nhỏ còn 1280 px nên mã nhỏ trên thẻ bị mờ.
+4. OCR hay nhầm O/0, I/1, S/5, B/8, hoặc đọc thiếu 1 ký tự (VD "HRO28 (542M)"); bản cũ đòi khớp tuyệt đối nên trượt.
+5. Tên có dấu tiếng Việt bị đọc sai ("NGNEN WHAT AOC"); bản cũ chỉ lấy 1 dòng tên và so khớp gần như tuyệt đối.
+6. Danh sách nhân viên quá lớn thì không vào được cache (giới hạn 95KB) nên mỗi lần quét phải đọc lại Sheet, chậm và dễ timeout.
+
 CÁC THAY ĐỔI CHÍNH
-1. Bỏ nút xoay thủ công. Khi quét, trình duyệt OCR lần lượt cả bốn hướng 0°, 90°, 180°, 270°; chọn kết quả có điểm nhận diện cao nhất, không dừng ngay khi vừa tìm thấy một mã.
-2. Đối chiếu mã nhân viên và mã chấm công. Nếu hai mã khớp với hai người khác nhau, hệ thống báo xung đột và không tự chọn một người.
-3. Nếu có mã nhưng không tìm thấy trong Sheet, không dùng tên OCR để ghi đè kết quả mã.
-4. Cho phép xác nhận thủ công khi không tìm thấy nhân viên. Giao diện hiển thị cảnh báo và yêu cầu người dùng xác nhận. Backend tự tra cứu lại; bản ghi được gắn trạng thái "XÁC NHẬN THỦ CÔNG - CHƯA XÁC MINH".
-5. Backend không tin cậy cờ foundInList từ trình duyệt; tự đối chiếu lại trước khi ghi.
-6. Thêm endpoint kiểm tra cấu hình: mở URL Web App với ?action=health để xem Apps Script có mở được Spreadsheet, tab DanhSachNV và thư mục Drive hay không.
-7. Phát hiện và trả cảnh báo mã nhân viên/mã chấm công trùng trong danh sách.
+Giao diện (index.html)
+- Chụp ở độ phân giải camera (tối đa 1920 px), bật lấy nét liên tục nếu máy hỗ trợ.
+- Tự xử lý ảnh bằng cân bằng tương phản cục bộ trên kênh xanh lá (chạy được trên mọi trình duyệt), mỗi hướng đọc 2 lần: chữ tối và chữ sáng.
+- Thử hướng 0° -> 90° -> 270° -> 180°; DỪNG NGAY khi server dò ra nhân viên chắc chắn (trường hợp thường chỉ mất 1 hướng, nhanh hơn bản cũ luôn đọc đủ 4 hướng).
+- Chỉ dùng OCR tiếng Anh (nhanh hơn, ít nhầm hơn vie+eng; tên được so khớp không dấu).
+- Khi chưa chắc chắn: hiện tối đa 3 gợi ý nhân viên để bấm chọn, không bắt gõ tay.
+Máy chủ (Code.gs)
+- Dò theo ĐIỂM từ cả 3 thông tin: mã nhân viên (khớp hoàn toàn 60đ, lệch 1 ký tự 40đ), mã chấm công trong ngoặc (30đ), họ tên (tối đa 50đ, chịu được sai chính tả/mất dấu). Chịu nhầm O/0, I/L/1, S/5, B/8, Z/2, G/6.
+- Chỉ tự điền khi đủ điểm VÀ hơn người thứ hai rõ ràng; ngược lại trả về danh sách gợi ý. Mã NV và mã chấm công trỏ về 2 người khác nhau thì báo xung đột như cũ.
+- Đọc cột theo TIÊU ĐỀ (MaNV, HoTen, MaChamCong, CaLamViec); không thấy tiêu đề thì dùng đúng thứ tự cột A-D như cũ.
+- Cache danh sách nhân viên theo từng khúc (không còn giới hạn 95KB), giữ 5 phút; nếu không dò chắc chắn thì tự đọc lại Sheet mới nhất rồi dò lần nữa (nhân viên mới thêm).
+- Khi ghi chấm công: đối chiếu CHÍNH XÁC theo mã/tên trên form, và ghi tên/mã/ca đúng theo Google Sheet. Bản ghi chọn từ gợi ý có trạng thái "Đã đối chiếu Google Sheet (chọn từ gợi ý OCR)".
+- Tra cứu chuyển sang POST (văn bản OCR dài không còn vướng giới hạn độ dài URL). GET ?action=lookup vẫn dùng được.
+- ?action=health giờ trả thêm số nhân viên và cảnh báo mã trùng.
 
 CÁCH TRIỂN KHAI
 1. Mở đúng dự án Google Apps Script đang gắn với Web App.
 2. Thay toàn bộ Code.gs bằng Code.gs trong gói này, lưu lại.
-3. Trong Apps Script, chọn hàm lamMoiCacheNhanVien và chạy một lần. Chấp thuận quyền Sheets và Drive nếu được hỏi.
-4. Chọn hàm kiemTraCauHinh và chạy để kiểm tra. Nếu báo lỗi openById, xác minh ID và quyền truy cập.
-5. Deploy > Manage deployments > Edit > chọn New version > Deploy. Nếu dùng URL deployment cũ, giữ nguyên URL Web App hiện tại.
-6. Thay index.html trên GitHub Pages bằng file trong gói, commit/push và chờ Pages cập nhật.
-7. Mở URL Web App thêm ?action=health (hoặc &action=health nếu URL đã có tham số). Kết quả success:true là điều kiện cần trước khi kiểm thử toàn bộ luồng.
-8. Tải lại GitHub Pages, cấp quyền camera, thử các thẻ mẫu và kiểm tra bản ghi trong ChamCong cùng ảnh trong thư mục Drive.
+3. Chạy hàm lamMoiCacheNhanVien một lần (chấp thuận quyền nếu được hỏi), rồi chạy kiemTraCauHinh.
+4. Deploy > Manage deployments > Edit > New version > Deploy (giữ nguyên URL Web App).
+5. Thay index.html trên GitHub Pages bằng file trong gói, commit/push và chờ Pages cập nhật.
+6. Mở URL Web App thêm ?action=health, cần thấy success:true.
+7. Tải lại trang (Ctrl+F5 / xóa cache trình duyệt), thử lần lượt 3 loại thẻ.
 
-QUY TRÌNH SỬ DỤNG
-- Bấm Bật Camera.
-- Đặt thẻ trong khung và bấm Chụp & Đọc Thẻ.
-- Hệ thống thử 4 hướng ảnh, hiển thị thông tin OCR và kết quả tra cứu.
-- Nếu tra cứu được nhân viên, kiểm tra lại tên, mã và ca trước khi xác nhận.
-- Nếu không tìm thấy, người dùng có thể sửa thông tin. Khi bấm xác nhận, ứng dụng hỏi xác nhận thủ công và ghi trạng thái CHƯA XÁC MINH.
-- Nếu mã nhân viên và mã chấm công mâu thuẫn, backend từ chối ghi để tránh ghi nhầm người.
+MẸO KHI QUÉT
+- Đưa thẻ lại gần để mã nhân viên và tên chiếm rõ trong khung, giữ thẻ phẳng, tránh bóng lóa của vỏ nhựa (thẻ HR trong bao nhựa dễ bị lóa).
+- Nếu hiện danh sách gợi ý: chọn đúng người hoặc chụp lại.
 
-GIỚI HẠN / KIỂM THỬ
-- OCR vẫn có thể đọc sai do ảnh mờ, lóa, thẻ nhỏ hoặc font in; cần kiểm tra thông tin trước khi chấm công.
+GIỚI HẠN
+- OCR vẫn có thể sai khi ảnh mờ hoặc lóa nặng; luôn kiểm tra tên, mã trước khi bấm ghi.
 - Xác nhận thủ công là cơ chế ngoại lệ, không có nghĩa là danh tính đã được xác thực.
-- Bốn hướng OCR tăng khả năng đọc thẻ xoay ngang/dọc nhưng có thể làm thời gian quét lâu hơn.
-- Gói mã nguồn không thể tự sửa quyền Google Sheet/Drive hoặc xác minh ID khi chưa có quyền truy cập file thực tế.
-- Nên thử trước với bản sao dữ liệu hoặc một số bản ghi kiểm thử.
-
-
-CẢI TIẾN ỔN ĐỊNH OCR
-- So sánh kết quả 4 hướng bằng confidence của Tesseract, cộng điểm có kiểm soát cho các trường mã và tên.
-- Không chỉ chọn góc đầu tiên có chuỗi giống mã.
-- Chấp nhận một số khoảng trắng/dấu chấm/dấu gạch OCR chèn giữa mã.
-- Nếu không đọc được mã ở cả bốn hướng, yêu cầu chụp lại thay vì đoán.
-- OCR vẫn phụ thuộc độ nét, ánh sáng, lóa và kích thước thẻ; cần thử nghiệm với thẻ thực tế.
+- Các ngưỡng điểm có thể chỉnh ở đầu Code.gs: SCORE_CONFIDENT (50), SCORE_MARGIN (15), SCORE_SUGGEST (30).

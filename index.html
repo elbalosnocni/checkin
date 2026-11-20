@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Quét Thẻ Nhân Viên - Liwayway</title>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
   <style>
     * { box-sizing: border-box; }
     body { font-family: Arial,sans-serif; max-width: 680px; margin: 16px auto; padding: 0 14px; background: #f2f4f8; color: #222; }
@@ -27,6 +27,8 @@
     .warn { background:#fce8e6; color:#c5221f; border:1px solid #fad2cf; }
     #status { margin-top:8px; font-size:13px; color:#444; font-weight:bold; }
     #saveMsg { margin-top:8px; font-size:14px; font-weight:bold; color:#0f7b43; overflow-wrap:anywhere; }
+    .cand { display:block; width:100%; text-align:left; background:#fff; color:#222; border:1px solid #d0d5dd; margin-top:6px; padding:10px 12px; font-weight:normal; line-height:1.4; }
+    .cand b { color:#1a73e8; }
     .hint { color:#666; font-size:12px; line-height:1.45; }
     @media(max-width:480px) { .grid-2 { grid-template-columns:1fr; } button { flex:1; } }
   </style>
@@ -44,12 +46,13 @@
     </div>
     <div id="status">Trạng thái: Sẵn sàng</div>
     <canvas id="canvas" style="display:none"></canvas>
-    <p class="hint">Hệ thống tự thử 4 hướng ảnh (0°, 90°, 180°, 270°). Ảnh chỉ được gửi lên Google Drive khi bạn xác nhận ghi chấm công.</p>
+    <p class="hint">Đưa thẻ lại gần sao cho mã nhân viên và tên đọc rõ, giữ thẻ phẳng, tránh bóng lóa. Hệ thống tự thử nhiều cách xử lý ảnh và 4 hướng xoay, dừng ngay khi dò được nhân viên trong Google Sheet. Ảnh chỉ được gửi lên Google Drive khi bạn xác nhận ghi chấm công.</p>
   </div>
 
   <div class="card">
     <h3>Kết quả nhận diện & Dò ca làm việc</h3>
     <div id="matchBadge"></div>
+    <div id="candidates"></div>
     <label>Họ và tên nhân viên</label>
     <input id="hoTen" type="text" placeholder="VD: NGUYỄN NHẬT HÀO C">
     <div class="grid-2">
@@ -66,10 +69,11 @@
   </div>
 
 <script>
-const GAS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxJ4U4pa4a4GOCUVcLK-oTYjkqapUxl-GkXyoYjoBaYrRDj-Du01RlIGe7GXVLTCxty0g/exec';
+const GAS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzpzsF1OM8fw8aucAnWOQ9vVgf9Z7tIWXBbILJ2-DZ0bY8xGXUDnRnYNu2YihXKo3EkSw/exec';
+const ANGLES = [0, 90, 270, 180];   // thử thẻ nằm ngang trước, rồi xoay dọc, cuối cùng ngược đầu
 let cameraStream = null;
-let bestRotationDeg = 0;
 let foundInList = false;
+let pickedFromList = false;
 let capturedImageData = '';
 let ocrWorkerPromise = null;
 let busy = false;
@@ -79,6 +83,7 @@ function setStatus(msg) { $('status').textContent = 'Trạng thái: ' + msg; }
 function setBusy(value) {
   busy = value;
   ['btnCamera','btnOCR','btnSave'].forEach(id => $(id).disabled = value);
+  document.querySelectorAll('.cand').forEach(b => b.disabled = value);
 }
 
 async function moCamera() {
@@ -86,59 +91,103 @@ async function moCamera() {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('Trình duyệt không hỗ trợ camera hoặc trang chưa dùng HTTPS.');
     if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
     cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
       audio: false
     });
+    // Lấy nét liên tục nếu thiết bị hỗ trợ (chữ nhỏ trên thẻ cần nét)
+    try {
+      const track = cameraStream.getVideoTracks()[0];
+      const caps = track.getCapabilities ? track.getCapabilities() : {};
+      if (caps.focusMode && caps.focusMode.includes('continuous')) await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+    } catch (e) {}
     $('video').srcObject = cameraStream;
     await $('video').play();
     setStatus('Camera đã bật. Đặt thẻ vào khung rồi bấm Chụp & Đọc Thẻ.');
   } catch (err) { setStatus('Không mở được camera: ' + err.message); }
 }
 
-
-function makeCapture() {
+// Chụp ở độ phân giải gốc của camera (tối đa 1920 px) để chữ nhỏ trên thẻ còn đủ nét
+function captureFrame() {
   const video = $('video');
   if (!video.videoWidth) throw new Error('Camera chưa sẵn sàng. Vui lòng đợi hình ảnh xuất hiện.');
+  const scale = Math.min(1, 1920 / video.videoWidth);
   const c = document.createElement('canvas');
-  const scale = Math.min(1, 1280 / video.videoWidth);
   c.width = Math.round(video.videoWidth * scale);
   c.height = Math.round(video.videoHeight * scale);
   c.getContext('2d', { alpha:false }).drawImage(video, 0, 0, c.width, c.height);
-  return c.toDataURL('image/jpeg', 0.82);
+  return c;
+}
+function canvasToJpeg(c, maxW) {
+  const s = Math.min(1, maxW / c.width);
+  const o = document.createElement('canvas');
+  o.width = Math.round(c.width * s); o.height = Math.round(c.height * s);
+  o.getContext('2d', { alpha:false }).drawImage(c, 0, 0, o.width, o.height);
+  return o.toDataURL('image/jpeg', 0.82);
 }
 
-function renderProcessedCanvas(dataUrl, deg) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const c = $('canvas');
-      const w = img.width, h = img.height;
-      c.width = (deg === 90 || deg === 270) ? h : w;
-      c.height = (deg === 90 || deg === 270) ? w : h;
-      const ctx = c.getContext('2d', { alpha:false });
-      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,c.width,c.height);
-      ctx.save();
-      ctx.translate(c.width/2, c.height/2);
-      ctx.rotate(deg * Math.PI / 180);
-      ctx.filter = 'grayscale(100%) contrast(145%) brightness(108%)';
-      ctx.drawImage(img, -w/2, -h/2, w, h);
-      ctx.restore();
-      c.style.display = 'block';
-      resolve(c);
-    };
-    img.onerror = () => reject(new Error('Không xử lý được ảnh chụp.'));
-    img.src = dataUrl;
-  });
+// <LCN>
+// Cân bằng tương phản cục bộ trên kênh XANH LÁ (không dùng ctx.filter vì Safari/iPhone không hỗ trợ).
+// polarity = +1: giữ chữ TỐI trên nền sáng (thẻ trắng, chữ đen)
+// polarity = -1: đảo để chữ SÁNG trên nền tối thành chữ tối (dải đỏ đậm, chữ trắng ở thẻ PL/PR)
+function lcnGreen(rgba, w, h, polarity) {
+  const n = w * h, g = new Uint8Array(n);
+  for (let i = 0, j = 1; i < n; i++, j += 4) g[i] = rgba[j];
+  const W = w + 1, I = new Uint32Array(W * (h + 1));
+  for (let y = 0; y < h; y++) {
+    let row = 0;
+    for (let x = 0; x < w; x++) { row += g[y * w + x]; I[(y + 1) * W + x + 1] = I[y * W + x + 1] + row; }
+  }
+  const r = Math.max(8, Math.round(w / 52));
+  const out = new Uint8ClampedArray(n * 4);
+  for (let y = 0; y < h; y++) {
+    const y0 = Math.max(0, y - r), y1 = Math.min(h - 1, y + r);
+    for (let x = 0; x < w; x++) {
+      const x0 = Math.max(0, x - r), x1 = Math.min(w - 1, x + r);
+      const area = (x1 - x0 + 1) * (y1 - y0 + 1);
+      const sum = I[(y1 + 1) * W + x1 + 1] - I[y0 * W + x1 + 1] - I[(y1 + 1) * W + x0] + I[y0 * W + x0];
+      const v = 225 + polarity * (g[y * w + x] - sum / area) * 2.2;
+      const o = (y * w + x) * 4, c = v < 0 ? 0 : (v > 255 ? 255 : v);
+      out[o] = out[o + 1] = out[o + 2] = c; out[o + 3] = 255;
+    }
+  }
+  return out;
+}
+// </LCN>
+
+function buildVariant(src, deg, polarity) {
+  const rot = (deg === 90 || deg === 270);
+  const baseW = rot ? src.height : src.width;
+  // Chữ trên thẻ OCR tốt nhất khi ảnh rộng khoảng 1800-2400 px
+  const scale = baseW < 1800 ? Math.min(2.5, 1800 / baseW) : Math.min(1, 2400 / baseW);
+  const w = Math.round((rot ? src.height : src.width) * scale);
+  const h = Math.round((rot ? src.width : src.height) * scale);
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d', { alpha:false, willReadFrequently:true });
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(deg * Math.PI / 180);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, -src.width * scale / 2, -src.height * scale / 2, src.width * scale, src.height * scale);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const img = ctx.getImageData(0, 0, w, h);
+  img.data.set(lcnGreen(img.data, w, h, polarity));
+  ctx.putImageData(img, 0, 0);
+  return c;
 }
 
 async function getOCRWorker() {
   if (!window.Tesseract) throw new Error('Không tải được thư viện OCR. Kiểm tra kết nối Internet rồi tải lại trang.');
   if (!ocrWorkerPromise) {
-    ocrWorkerPromise = Tesseract.createWorker('vie+eng', 1, {
+    // Chỉ cần tiếng Anh: tên được so khớp không dấu, mã là chữ + số. Nhanh và ít nhầm hơn vie+eng.
+    ocrWorkerPromise = Tesseract.createWorker('eng', 1, {
       logger: m => {
-        if (m.status === 'recognizing text') setStatus('Đang nhận diện OCR... ' + Math.round((m.progress || 0)*100) + '%');
+        if (m.status === 'recognizing text') setStatus(($('status').dataset.phase || 'Đang nhận diện') + ' ' + Math.round((m.progress || 0) * 100) + '%');
       }
-    });
+    }).then(async w => {
+      await w.setParameters({ tessedit_pageseg_mode: '11', user_defined_dpi: '300' });  // 11 = văn bản rải rác
+      return w;
+    }).catch(e => { ocrWorkerPromise = null; throw e; });
   }
   return ocrWorkerPromise;
 }
@@ -147,109 +196,121 @@ async function chupVaNhanDien() {
   if (busy) return;
   if (!$('video').srcObject) { alert('Vui lòng bấm Bật Camera trước.'); return; }
   setBusy(true);
+  clearResult();
   try {
     setStatus('Đang chụp ảnh...');
-    capturedImageData = makeCapture();
+    const frame = captureFrame();
+    capturedImageData = canvasToJpeg(frame, 1280);
+    const preview = $('canvas');
+    preview.width = frame.width; preview.height = frame.height;
+    preview.getContext('2d').drawImage(frame, 0, 0);
+    preview.style.display = 'block';
+
     const worker = await getOCRWorker();
-    const angles = [0, 90, 180, 270];
-    let bestText = '', bestCandidate = null, bestAngle = 0, bestScore = -1;
-    for (const angle of angles) {
-      setStatus(`Đang đọc thẻ tự động (góc ${angle}°)...`);
-      const canvas = await renderProcessedCanvas(capturedImageData, angle);
-      const result = await worker.recognize(canvas);
-      const text = result.data.text || '';
-      const candidate = tachThongTinTheLiwayway(text);
-      const confidence = Number(result.data.confidence || 0);
-      const score = scoreCandidate(candidate, confidence);
-      if (score > bestScore) {
-        bestScore = score; bestText = text; bestCandidate = candidate; bestAngle = angle;
+    const texts = [];
+    let res = null;
+    for (const angle of ANGLES) {
+      // Mỗi hướng đọc 2 lần: chữ tối trên nền sáng và chữ sáng trên nền tối (dải đỏ của thẻ)
+      for (const pol of [1, -1]) {
+        $('status').dataset.phase = `Đang đọc thẻ (góc ${angle}°, ${pol > 0 ? 'chữ tối' : 'chữ sáng'})`;
+        setStatus($('status').dataset.phase + '...');
+        const variant = buildVariant(frame, angle, pol);
+        const result = await worker.recognize(variant);
+        texts.push(result.data.text || '');
       }
+      const raw = texts.join('\n');
+      $('rawOcr').value = raw.trim();
+      setStatus(`Đang dò danh sách (sau góc ${angle}°)...`);
+      res = await traCuuServer({ rawText: raw });
+      if (res && res.confident) break;      // dò được chắc chắn thì dừng, không đọc thêm hướng khác
     }
-    bestRotationDeg = bestAngle;
-    await renderProcessedCanvas(capturedImageData, bestRotationDeg);
-    $('rawOcr').value = bestText.trim();
-    if (!bestCandidate || (!bestCandidate.maNV && !bestCandidate.maChamCong)) {
-      $('matchBadge').className = 'badge warn';
-      $('matchBadge').textContent = 'OCR chưa đọc chắc chắn được mã. Hãy đưa thẻ gần camera, tránh lóa và chụp lại.';
-      setStatus('Đã thử 4 hướng nhưng chưa nhận diện được mã. Vui lòng chụp lại.');
-      return;
-    }
-    setStatus(`Đã thử 4 hướng; chọn góc ${bestAngle}° theo độ tin cậy OCR. Đang đối chiếu danh sách...`);
-    await apDungVaDoSheet(bestCandidate || {}, bestText);
+    hienKetQua(res);
   } catch (err) {
     setStatus('Lỗi OCR: ' + err.message);
   } finally { setBusy(false); }
 }
 
-function scoreCandidate(c, confidence) {
-  if (!c) return -1;
-  let score = Math.max(0, Math.min(100, Number(confidence) || 0));
-  if (c.maNV) score += 18;
-  if (c.maChamCong) score += 14;
-  if (c.hoTen) score += 4;
-  if (c.maNV && c.maChamCong) score += 8;
-  return score;
-}
-
-function tachThongTinTheLiwayway(rawText) {
-  let maNV = '', maChamCong = '', hoTen = '';
-  const normalized = String(rawText || '').toUpperCase();
-  const nv = normalized.match(/\\b([A-Z])\\s*[-.]?\\s*([A-Z])\\s*[-.]?\\s*(\\d(?:[\\s.-]*\\d){2,4})\\b/);
-  const cc = normalized.match(/[\\(\\[\\{]\\s*(\\d(?:[\\s.-]*\\d){2,5})\\s*[\\)\\]\\}]/);
-  if (nv) maNV = (nv[1] + nv[2] + nv[3]).replace(/[\\s.-]/g, '');
-  if (cc) maChamCong = cc[1].replace(/[\\s.-]/g, '');
-  const ignore = ['CONG TY','CÔNG TY','CO PHAN','CỔ PHẦN','LIWAYWAY','VIET NAM','VIỆT NAM',
-    'CONG NHAN','CÔNG NHÂN','SAN XUAT','SẢN XUẤT','VAN HANH','VẬN HÀNH','BAO BI','BAO BÌ',
-    'NHAN VIEN','NHÂN VIÊN','OFFICE','STAFF','NHAN SU','NHÂN SỰ','CAP LAN','CẤP LẦN'];
-  const lines = rawText.split(/\r?\n/).map(s => s.replace(/[^A-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠƯẠ-Ỹ\s]/gi,' ').replace(/\s+/g,' ').trim()).filter(s => s.length >= 6);
-  for (const line of lines) {
-    const upper = line.toUpperCase();
-    const words = upper.split(' ').filter(Boolean);
-    if (!ignore.some(k => upper.includes(k)) && words.length >= 2 && words.length <= 5) { hoTen = upper; break; }
-  }
-  return { maNV, maChamCong, hoTen };
+async function traCuuServer(body) {
+  const response = await fetch(GAS_WEBAPP_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+    body: JSON.stringify(Object.assign({ action:'lookup' }, body))
+  });
+  if (!response.ok) throw new Error('HTTP ' + response.status);
+  return response.json();
 }
 
 async function xuLyVaDoSheet(text) {
-  const parsed = tachThongTinTheLiwayway(text);
-  await apDungVaDoSheet(parsed, text);
+  if (busy) return;
+  setBusy(true); clearResult();
+  try {
+    setStatus('Đang dò lại danh sách...');
+    hienKetQua(await traCuuServer({
+      rawText: text, hoTen: $('hoTen').value, maNV: $('maNV').value, maChamCong: $('maChamCong').value
+    }));
+  } catch (err) {
+    setMatchBadge('warn', 'Lỗi kết nối Google Sheet: ' + err.message);
+    setStatus('Lỗi kết nối Google Sheet.');
+  } finally { setBusy(false); }
 }
 
-async function apDungVaDoSheet(parsed, rawText) {
-  $('maNV').value = parsed.maNV || '';
-  $('maChamCong').value = parsed.maChamCong || '';
-  $('hoTen').value = parsed.hoTen || '';
-  foundInList = false;
-  const badge = $('matchBadge');
-  try {
-    const params = new URLSearchParams({
-      action:'lookup', maNV:parsed.maNV || '', maChamCong:parsed.maChamCong || '',
-      hoTen:parsed.hoTen || '', rawText:rawText || ''
-    });
-    const response = await fetch(`${GAS_WEBAPP_URL}?${params.toString()}`, { cache:'no-store' });
-    if (!response.ok) throw new Error('HTTP ' + response.status);
-    const res = await response.json();
-    if (res.found) {
-      foundInList = true;
-      $('hoTen').value = res.hoTen;
-      $('maNV').value = res.maNV;
-      $('maChamCong').value = res.maChamCong;
-      $('caLamViec').value = res.caLamViec;
-      badge.className = 'badge ok';
-      badge.textContent = `✓ Có trong danh sách | Ca làm việc: ${res.caLamViec}`;
-      setStatus('Đã tìm thấy nhân viên.');
-    } else {
-      $('caLamViec').value = '';
-      badge.className = 'badge warn';
-      badge.textContent = res.error ? 'Cần kiểm tra: ' + res.error : 'Chưa xác minh được nhân viên trong DanhSachNV. Có thể nhập/sửa thông tin rồi xác nhận thủ công.';
-      setStatus('Tra cứu hoàn tất; chưa xác minh được nhân viên.');
-    }
-  } catch (err) {
-    $('caLamViec').value = '';
-    badge.className = 'badge warn';
-    badge.textContent = 'Lỗi kết nối Google Sheet: ' + err.message;
-    setStatus('Lỗi kết nối Google Sheet.');
+function clearResult() {
+  foundInList = false; pickedFromList = false;
+  $('candidates').textContent = '';
+  $('matchBadge').className = ''; $('matchBadge').textContent = '';
+  $('saveMsg').textContent = '';
+}
+function setMatchBadge(kind, text) {
+  const b = $('matchBadge'); b.className = 'badge ' + kind; b.textContent = text;
+}
+function dienThongTin(o) {
+  $('hoTen').value = o.hoTen || ''; $('maNV').value = o.maNV || '';
+  $('maChamCong').value = o.maChamCong || ''; $('caLamViec').value = o.caLamViec || '';
+}
+
+function hienKetQua(res) {
+  res = res || {};
+  if (res.error && !res.candidates) {
+    dienThongTin(res.parsed || {});
+    setMatchBadge('warn', 'Cần kiểm tra: ' + res.error);
+    setStatus('Tra cứu không thành công.');
+    return;
   }
+  if (res.confident) {
+    foundInList = true;
+    dienThongTin(res);
+    setMatchBadge('ok', `✓ Có trong danh sách | Ca làm việc: ${res.caLamViec}`);
+    setStatus('Đã tìm thấy nhân viên.');
+    return;
+  }
+  // Chưa chắc chắn: điền sẵn phần đoán được, cho chọn từ gợi ý
+  const g = res.parsed || {};
+  dienThongTin({ hoTen: g.hoTen, maNV: g.maNV, maChamCong: g.maChamCong, caLamViec: '' });
+  const cands = res.candidates || [];
+  if (cands.length) {
+    setMatchBadge('warn', (res.conflict ? res.error + ' ' : '') +
+      'Chưa chắc chắn. Chọn đúng nhân viên bên dưới, hoặc bấm Chụp lại (đưa thẻ gần hơn, tránh lóa).');
+    const box = $('candidates');
+    cands.forEach(c => {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'cand';
+      const b = document.createElement('b'); b.textContent = c.hoTen;
+      btn.append(b, document.createTextNode(` — ${c.maNV} (${c.maChamCong}) — ${c.caLamViec}`));
+      btn.onclick = () => chonGoiY(c);
+      box.appendChild(btn);
+    });
+  } else {
+    setMatchBadge('warn', 'Chưa xác minh được nhân viên trong DanhSachNV. Hãy chụp lại, hoặc nhập/sửa thông tin rồi xác nhận thủ công.');
+  }
+  setStatus('Tra cứu hoàn tất; chưa xác minh được nhân viên.');
+}
+
+function chonGoiY(c) {
+  foundInList = true; pickedFromList = true;
+  dienThongTin(c);
+  $('candidates').textContent = '';
+  setMatchBadge('ok', `✓ Đã chọn từ danh sách | Ca làm việc: ${c.caLamViec}`);
+  setStatus('Đã chọn nhân viên từ gợi ý.');
 }
 
 async function luuChamCong() {
@@ -258,7 +319,7 @@ async function luuChamCong() {
     action:'save',
     hoTen:$('hoTen').value.trim(), maNV:$('maNV').value.trim(),
     maChamCong:$('maChamCong').value.trim(), caLamViec:$('caLamViec').value.trim(),
-    imageData:capturedImageData
+    imageData:capturedImageData, picked: pickedFromList ? 'true' : 'false'
   };
   if (!payload.maNV && !payload.maChamCong && !payload.hoTen) {
     alert('Chưa có thông tin nhân viên để lưu.'); return;
