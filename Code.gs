@@ -2,20 +2,41 @@ const SPREADSHEET_ID = '1vBk4eHERPAQcAe3OLCGtwk5PlGRy1YIi3JHyFPe9-3M';
 const SHEET_DS = 'DanhSachNV';
 const SHEET_CC = 'ChamCong';
 
-function doGet() {
-  return HtmlService.createHtmlOutputFromFile('index')
-    .setTitle('Quét Thẻ Nhân Viên - Liwayway')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+// Xử lý request GET (Dò nhân viên)
+function doGet(e) {
+  const action = (e && e.parameter && e.parameter.action) || '';
+  if (action === 'lookup') {
+    const res = traCuuNhanVien({
+      maNV: e.parameter.maNV || '',
+      maChamCong: e.parameter.maChamCong || '',
+      hoTen: e.parameter.hoTen || '',
+      rawText: e.parameter.rawText || ''
+    });
+    return jsonResponse(res);
+  }
+  return jsonResponse({ status: 'API Quet The Liwayway dang hoat dong' });
 }
 
-/**
- * Dò nhân viên trong sheet DanhSachNV
- * Cấu trúc cột DanhSachNV:
- * Cột A: MaNV (VD: PR7155, PL1305, HR028)
- * Cột B: HoTen (VD: NGUYỄN NHẬT HÀO C)
- * Cột C: MaChamCong (VD: 7000, 7235, 5420)
- * Cột D: CaLamViec (VD: Ca 1, Ca 2, Ca 3, Hành chính...)
- */
+// Xử lý request POST (Ghi chấm công từ GitHub Pages)
+function doPost(e) {
+  try {
+    const payload = JSON.parse(e.postData.contents);
+    if (payload.action === 'save') {
+      const res = ghiChamCong(payload);
+      return jsonResponse(res);
+    }
+    return jsonResponse({ success: false, error: 'Action không hợp lệ' });
+  } catch (err) {
+    return jsonResponse({ success: false, error: err.message });
+  }
+}
+
+function jsonResponse(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
 function traCuuNhanVien(payload) {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sheet = ss.getSheetByName(SHEET_DS);
@@ -50,20 +71,15 @@ function traCuuNhanVien(payload) {
       };
     }
   }
-
   return { found: false };
 }
 
-/**
- * Ghi dữ liệu vào sheet ChamCong
- * Cột A: ThoiGian | B: MaNV | C: HoTen | D: MaChamCong | E: CaLamViec | F: TrangThai
- */
 function ghiChamCong(payload) {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   let sheet = ss.getSheetByName(SHEET_CC);
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_CC);
-    sheet.appendRow(['ThoiGian', 'MaNV', 'HoTen', 'MaChamCong', 'CaLamViec', 'TrangThai']);
+    sheet.appendRow(['ThoiGian', 'MaNV', 'Hoten', 'Machamcong', 'CaLamViec', 'TrangThai']);
   }
 
   const now = Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'yyyy-MM-dd HH:mm:ss');
@@ -84,10 +100,7 @@ function ghiChamCong(payload) {
 }
 
 function normalizeCode(str) {
-  return String(str || '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
-    .trim();
+  return String(str || '').toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
 }
 
 function normalizeText(str) {
