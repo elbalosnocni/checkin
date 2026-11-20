@@ -1,292 +1,283 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Quét Thẻ Nhân Viên - Liwayway</title>
-  <script src="https://jsdelivr.net"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 680px; margin: 16px auto; padding: 0 14px; background: #f2f4f8; color: #222; }
-    .card { background: #fff; padding: 16px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 14px; }
-    h2, h3 { margin-top: 0; }
+    * { box-sizing: border-box; }
+    body { font-family: Arial,sans-serif; max-width: 680px; margin: 16px auto; padding: 0 14px; background: #f2f4f8; color: #222; }
+    .card { background: #fff; padding: 16px; border-radius: 10px; box-shadow: 0 2px 8px #00000014; margin-bottom: 14px; }
+    h2,h3 { margin-top: 0; }
     .cam-wrap { position: relative; width: 100%; background: #000; border-radius: 8px; overflow: hidden; }
     video { width: 100%; max-height: 340px; display: block; object-fit: cover; }
-    .guide-box {
-      position: absolute; inset: 12% 18%; border: 2px dashed rgba(255,255,255,0.85);
-      border-radius: 8px; pointer-events: none;
-    }
-    canvas { width: 100%; max-height: 260px; border-radius: 8px; margin-top: 10px; border: 1px solid #ddd; object-fit: contain; background: #111; }
-    .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-    button { padding: 10px 14px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; }
-    .btn-cam { background: #1a73e8; color: #fff; }
-    .btn-rot { background: #5f6368; color: #fff; }
-    .btn-ocr { background: #0f9d58; color: #fff; }
-    .btn-save { background: #e37400; color: #fff; width: 100%; font-size: 15px; padding: 12px; }
-    label { display: block; font-size: 13px; color: #444; margin-top: 10px; font-weight: bold; }
-    input, textarea { width: 100%; padding: 9px; margin-top: 4px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .badge { display: block; padding: 10px 12px; border-radius: 6px; font-size: 14px; margin-top: 10px; font-weight: bold; }
-    .ok { background: #e6f4ea; color: #137333; border: 1px solid #ceead6; }
-    .warn { background: #fce8e6; color: #c5221f; border: 1px solid #fad2cf; }
-    #status { margin-top: 8px; font-size: 13px; color: #444; font-weight: bold; }
-    #saveMsg { margin-top: 8px; font-size: 14px; font-weight: bold; color: #0f9d58; }
+    .guide-box { position:absolute; inset:12% 18%; border:2px dashed #ffffffd9; border-radius:8px; pointer-events:none; }
+    canvas { width:100%; max-height:260px; border-radius:8px; margin-top:10px; border:1px solid #ddd; object-fit:contain; background:#111; }
+    .row { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+    button { padding:10px 14px; border:0; border-radius:6px; cursor:pointer; font-weight:bold; font-size:14px; }
+    button:disabled { opacity:.55; cursor:wait; }
+    .btn-cam { background:#1a73e8; color:#fff; } .btn-rot { background:#5f6368; color:#fff; }
+    .btn-ocr { background:#0f9d58; color:#fff; } .btn-save { background:#e37400; color:#fff; width:100%; font-size:15px; padding:12px; }
+    label { display:block; font-size:13px; color:#444; margin-top:10px; font-weight:bold; }
+    input,textarea { width:100%; padding:9px; margin-top:4px; border:1px solid #ccc; border-radius:6px; font-size:14px; }
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .badge { display:block; padding:10px 12px; border-radius:6px; font-size:14px; margin-top:10px; font-weight:bold; }
+    .ok { background:#e6f4ea; color:#137333; border:1px solid #ceead6; }
+    .warn { background:#fce8e6; color:#c5221f; border:1px solid #fad2cf; }
+    #status { margin-top:8px; font-size:13px; color:#444; font-weight:bold; }
+    #saveMsg { margin-top:8px; font-size:14px; font-weight:bold; color:#0f7b43; overflow-wrap:anywhere; }
+    .hint { color:#666; font-size:12px; line-height:1.45; }
+    @media(max-width:480px) { .grid-2 { grid-template-columns:1fr; } button { flex:1; } }
   </style>
 </head>
 <body>
   <div class="card">
     <h2>Quét Thẻ Nhân Viên (OCR)</h2>
     <div class="cam-wrap">
-      <video id="video" autoplay playsinline></video>
+      <video id="video" autoplay playsinline muted></video>
       <div class="guide-box"></div>
     </div>
-
     <div class="row">
-      <button class="btn-cam" onclick="moCamera()">1. Bật Camera</button>
-      <button class="btn-rot" onclick="xoayKhungHinh()">Xoay ảnh (<span id="degLabel">0</span>°)</button>
-      <button class="btn-ocr" onclick="chupVaNhanDien()">2. Chụp & Đọc Thẻ</button>
+      <button id="btnCamera" class="btn-cam" onclick="moCamera()">1. Bật Camera</button>
+      <button id="btnRotate" class="btn-rot" onclick="xoayKhungHinh()">Xoay (<span id="degLabel">0</span>°)</button>
+      <button id="btnOCR" class="btn-ocr" onclick="chupVaNhanDien()">2. Chụp & Đọc Thẻ</button>
     </div>
-
     <div id="status">Trạng thái: Sẵn sàng</div>
-    <canvas id="canvas" style="display:none;"></canvas>
+    <canvas id="canvas" style="display:none"></canvas>
+    <p class="hint">Ảnh chụp sẽ được gửi lên thư mục Google Drive đã cấu hình khi bạn xác nhận ghi chấm công.</p>
   </div>
 
   <div class="card">
     <h3>Kết quả nhận diện & Dò ca làm việc</h3>
     <div id="matchBadge"></div>
-
     <label>Họ và tên nhân viên</label>
-    <input id="hoTen" type="text" placeholder="VD: NGUYỄN NHẬT HÀO C" />
-
+    <input id="hoTen" type="text" placeholder="VD: NGUYỄN NHẬT HÀO C">
     <div class="grid-2">
-      <div>
-        <label>Mã nhân viên (VD: PR7155, HR028)</label>
-        <input id="maNV" type="text" placeholder="VD: PR7155" />
-      </div>
-      <div>
-        <label>Mã chấm công (Số trong ngoặc)</label>
-        <input id="maChamCong" type="text" placeholder="VD: 7000" />
-      </div>
+      <div><label>Mã nhân viên</label><input id="maNV" type="text" placeholder="VD: PR7155"></div>
+      <div><label>Mã chấm công</label><input id="maChamCong" type="text" placeholder="VD: 7000"></div>
     </div>
-
-    <label>Ca làm việc (Tự dò từ Google Sheet)</label>
-    <input id="caLamViec" type="text" placeholder="Hiển thị ca làm việc khi dò thấy" />
-
-    <div class="row">
-      <button class="btn-save" onclick="luuChamCong()">3. Xác nhận & Ghi chấm công</button>
-    </div>
+    <label>Ca làm việc (tự dò từ Google Sheet)</label>
+    <input id="caLamViec" type="text" placeholder="Hiển thị ca làm việc khi dò thấy">
+    <div class="row"><button id="btnSave" class="btn-save" onclick="luuChamCong()">3. Xác nhận & Ghi chấm công</button></div>
     <div id="saveMsg"></div>
-
     <label>Văn bản OCR đọc được (dùng kiểm tra / dò lại)</label>
     <textarea id="rawOcr" rows="3"></textarea>
-    <button class="btn-rot" style="margin-top:6px;" onclick="xuLyVaDoSheet(document.getElementById('rawOcr').value)">Dò lại từ văn bản trên</button>
+    <button class="btn-rot" style="margin-top:6px" onclick="xuLyVaDoSheet(document.getElementById('rawOcr').value)">Dò lại từ văn bản trên</button>
   </div>
 
-  <script>
-    // DÁN LINK WEB APP GOOGLE APPS SCRIPT CỦA BẠN VÀO DÒNG DƯỚI ĐÂY
-    const GAS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzpzsF1OM8fw8aucAnWOQ9vVgf9Z7tIWXBbILJ2-DZ0bY8xGXUDnRnYNu2YihXKo3EkSw/exec';
+<script>
+const GAS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzpzsF1OM8fw8aucAnWOQ9vVgf9Z7tIWXBbILJ2-DZ0bY8xGXUDnRnYNu2YihXKo3EkSw/exec';
+let cameraStream = null;
+let rotationDeg = 0;
+let foundInList = false;
+let capturedImageData = '';
+let ocrWorkerPromise = null;
+let busy = false;
 
-    let stream = null;
-    let rotationDeg = 0;
-    let foundInList = false;
+const $ = id => document.getElementById(id);
+function setStatus(msg) { $('status').textContent = 'Trạng thái: ' + msg; }
+function setBusy(value) {
+  busy = value;
+  ['btnCamera','btnRotate','btnOCR','btnSave'].forEach(id => $(id).disabled = value);
+}
 
-    async function moCamera() {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: false
-        });
-        document.getElementById('video').srcObject = stream;
-        setStatus('Camera đã bật. Đặt thẻ vào khung nét đứt rồi bấm "Chụp & Đọc Thẻ".');
-      } catch (err) {
-        setStatus('Không mở được camera: ' + err.message);
-      }
-    }
+async function moCamera() {
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('Trình duyệt không hỗ trợ camera hoặc trang chưa dùng HTTPS.');
+    if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    $('video').srcObject = cameraStream;
+    await $('video').play();
+    setStatus('Camera đã bật. Đặt thẻ vào khung rồi bấm Chụp & Đọc Thẻ.');
+  } catch (err) { setStatus('Không mở được camera: ' + err.message); }
+}
 
-    function xoayKhungHinh() {
-      rotationDeg = (rotationDeg + 90) % 360;
-      document.getElementById('degLabel').innerText = rotationDeg;
-    }
+function xoayKhungHinh() {
+  rotationDeg = (rotationDeg + 90) % 360;
+  $('degLabel').textContent = rotationDeg;
+}
 
-    function setStatus(msg) {
-      document.getElementById('status').innerText = 'Trạng thái: ' + msg;
-    }
+function makeCapture() {
+  const video = $('video');
+  if (!video.videoWidth) throw new Error('Camera chưa sẵn sàng. Vui lòng đợi hình ảnh xuất hiện.');
+  const c = document.createElement('canvas');
+  const scale = Math.min(1, 1280 / video.videoWidth);
+  c.width = Math.round(video.videoWidth * scale);
+  c.height = Math.round(video.videoHeight * scale);
+  c.getContext('2d', { alpha:false }).drawImage(video, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.82);
+}
 
-    function renderProcessedCanvas(video, deg) {
-      const canvas = document.getElementById('canvas');
-      const ctx = canvas.getContext('2d');
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-
-      if (deg === 90 || deg === 270) {
-        canvas.width = vh;
-        canvas.height = vw;
-      } else {
-        canvas.width = vw;
-        canvas.height = vh;
-      }
-
+function renderProcessedCanvas(dataUrl, deg) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = $('canvas');
+      const w = img.width, h = img.height;
+      c.width = (deg === 90 || deg === 270) ? h : w;
+      c.height = (deg === 90 || deg === 270) ? w : h;
+      const ctx = c.getContext('2d', { alpha:false });
+      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,c.width,c.height);
       ctx.save();
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate((deg * Math.PI) / 180);
-      ctx.filter = 'grayscale(100%) contrast(155%) brightness(108%)';
-      ctx.drawImage(video, -vw / 2, -vh / 2, vw, vh);
+      ctx.translate(c.width/2, c.height/2);
+      ctx.rotate(deg * Math.PI / 180);
+      ctx.filter = 'grayscale(100%) contrast(145%) brightness(108%)';
+      ctx.drawImage(img, -w/2, -h/2, w, h);
       ctx.restore();
-
-      canvas.style.display = 'block';
-      return canvas;
-    }
-
-    async function chupVaNhanDien() {
-      const video = document.getElementById('video');
-      if (!video.srcObject) {
-        alert('Vui lòng bấm "Bật Camera" trước.');
-        return;
-      }
-
-      setStatus('Đang xử lý ảnh và đọc OCR...');
-      const anglesToTry = [rotationDeg, (rotationDeg + 270) % 360, (rotationDeg + 90) % 360];
-      let bestText = '';
-      let parsed = null;
-
-      for (let i = 0; i < anglesToTry.length; i++) {
-        const deg = anglesToTry[i];
-        setStatus(`Đang quét OCR (góc ${deg}°)...`);
-        const canvas = renderProcessedCanvas(video, deg);
-        const { data: { text } } = await Tesseract.recognize(canvas, 'vie+eng');
-        const candidate = tachThongTinTheLiwayway(text);
-
-        if (candidate.maNV || candidate.maChamCong || candidate.hoTen) {
-          bestText = text;
-          parsed = candidate;
-          rotationDeg = deg;
-          document.getElementById('degLabel').innerText = deg;
-          break;
-        }
-        if (!bestText) {
-          bestText = text;
-          parsed = candidate;
-        }
-      }
-
-      document.getElementById('rawOcr').value = bestText.trim();
-      setStatus('Đọc thẻ xong. Đang dò trên Google Sheet...');
-      await apDungVaDoSheet(parsed, bestText);
-    }
-
-    function tachThongTinTheLiwayway(rawText) {
-      let maNV = '';
-      let maChamCong = '';
-      let hoTen = '';
-
-      const comboRegex = /\b([A-Z]{2}\s*\d{3,5})\s*[\(\[\{]\s*(\d{3,6})\s*[\)\]\}]/i;
-      const comboMatch = rawText.match(comboRegex);
-
-      if (comboMatch) {
-        maNV = comboMatch[1].replace(/\s+/g, '').toUpperCase();
-        maChamCong = comboMatch[2].trim();
-      } else {
-        const nvOnly = rawText.match(/\b([A-Z]{2}\s*\d{3,5})\b/i);
-        const ccOnly = rawText.match(/[\(\[]\s*(\d{3,6})\s*[\)\]]/);
-        if (nvOnly) maNV = nvOnly[1].replace(/\s+/g, '').toUpperCase();
-        if (ccOnly) maChamCong = ccOnly[1].trim();
-      }
-
-      const ignoreKeywords = [
-        'CONG TY', 'CÔNG TY', 'CO PHAN', 'CỔ PHẦN', 'LIWAYWAY', 'VIET NAM', 'VIỆT NAM',
-        'CONG NHAN', 'CÔNG NHÂN', 'SAN XUAT', 'SẢN XUẤT', 'VAN HANH', 'VẬN HÀNH',
-        'BAO BI', 'BAO BÌ', 'NHAN VIEN', 'NHÂN VIÊN', 'OFFICE', 'STAFF', 'NHAN SU', 'NHÂN SỰ', 'CAP LAN', 'CẤP LẦN'
-      ];
-
-      const lines = rawText
-        .split(/\r?\n/)
-        .map(l => l.replace(/[^A-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠƯẠ-Ỹ\s]/gi, '').replace(/\s+/g, ' ').trim())
-        .filter(l => l.length >= 6);
-
-      for (const line of lines) {
-        const upper = line.toUpperCase();
-        const isIgnored = ignoreKeywords.some(kw => upper.includes(kw));
-        const words = upper.split(' ').filter(Boolean);
-        if (!isIgnored && words.length >= 2 && words.length <= 5) {
-          hoTen = upper;
-          break;
-        }
-      }
-
-      return { maNV, maChamCong, hoTen };
-    }
-
-    async function xuLyVaDoSheet(text) {
-      const parsed = tachThongTinTheLiwayway(text);
-      await apDungVaDoSheet(parsed, text);
-    }
-
-    async function apDungVaDoSheet(parsed, rawText) {
-      document.getElementById('maNV').value = parsed.maNV || '';
-      document.getElementById('maChamCong').value = parsed.maChamCong || '';
-      document.getElementById('hoTen').value = parsed.hoTen || '';
-
-      const badge = document.getElementById('matchBadge');
-      try {
-        const params = new URLSearchParams({
-          action: 'lookup',
-          maNV: parsed.maNV || '',
-          maChamCong: parsed.maChamCong || '',
-          hoTen: parsed.hoTen || '',
-          rawText: rawText || ''
-        });
-
-        const response = await fetch(`${GAS_WEBAPP_URL}?${params.toString()}`);
-        const res = await response.json();
-
-        if (res.found) {
-          foundInList = true;
-          document.getElementById('hoTen').value = res.hoTen;
-          document.getElementById('maNV').value = res.maNV;
-          document.getElementById('maChamCong').value = res.maChamCong;
-          document.getElementById('caLamViec').value = res.caLamViec;
-
-          badge.className = 'badge ok';
-          badge.innerText = `✓ Có trong danh sách | Ca làm việc: ${res.caLamViec}`;
-        } else {
-          foundInList = false;
-          document.getElementById('caLamViec').value = '';
-badge.className = 'badge warn';
-badge.innerText = '✕ Không tìm thấy nhân viên trong danh sách (DanhSachNV)';
+      c.style.display = 'block';
+      resolve(c);
+    };
+    img.onerror = () => reject(new Error('Không xử lý được ảnh chụp.'));
+    img.src = dataUrl;
+  });
 }
-setStatus('Hoàn tất kiểm tra danh sách.');
-} catch (err) {
-setStatus('Lỗi kết nối Google Sheet: ' + err.message);
+
+async function getOCRWorker() {
+  if (!window.Tesseract) throw new Error('Không tải được thư viện OCR. Kiểm tra kết nối Internet rồi tải lại trang.');
+  if (!ocrWorkerPromise) {
+    ocrWorkerPromise = Tesseract.createWorker('vie+eng', 1, {
+      logger: m => {
+        if (m.status === 'recognizing text') setStatus('Đang nhận diện OCR... ' + Math.round((m.progress || 0)*100) + '%');
+      }
+    });
+  }
+  return ocrWorkerPromise;
 }
+
+async function chupVaNhanDien() {
+  if (busy) return;
+  if (!$('video').srcObject) { alert('Vui lòng bấm Bật Camera trước.'); return; }
+  setBusy(true);
+  try {
+    setStatus('Đang chụp ảnh...');
+    capturedImageData = makeCapture();
+    const worker = await getOCRWorker();
+    const angles = [rotationDeg, (rotationDeg + 90) % 360, (rotationDeg + 270) % 360];
+    let bestText = '', bestCandidate = null;
+    for (let i = 0; i < angles.length; i++) {
+      setStatus(`Đang đọc thẻ (góc ${angles[i]}°)...`);
+      const canvas = await renderProcessedCanvas(capturedImageData, angles[i]);
+      const result = await worker.recognize(canvas);
+      const text = result.data.text || '';
+      const candidate = tachThongTinTheLiwayway(text);
+      if (!bestText || scoreCandidate(candidate) > scoreCandidate(bestCandidate)) {
+        bestText = text; bestCandidate = candidate;
+      }
+      if (candidate.maNV || candidate.maChamCong) {
+        rotationDeg = angles[i]; $('degLabel').textContent = rotationDeg; break;
+      }
+    }
+    $('rawOcr').value = bestText.trim();
+    setStatus('Đã đọc thẻ. Đang dò danh sách nhân viên...');
+    await apDungVaDoSheet(bestCandidate || {}, bestText);
+  } catch (err) {
+    setStatus('Lỗi OCR: ' + err.message);
+  } finally { setBusy(false); }
 }
+
+function scoreCandidate(c) {
+  if (!c) return 0;
+  return (c.maNV ? 5 : 0) + (c.maChamCong ? 5 : 0) + (c.hoTen ? 1 : 0);
+}
+
+function tachThongTinTheLiwayway(rawText) {
+  let maNV = '', maChamCong = '', hoTen = '';
+  const combo = rawText.match(/\b([A-Z]{2}\s*\d{3,5})\s*[\(\[\{]\s*(\d{3,6})\s*[\)\]\}]/i);
+  if (combo) {
+    maNV = combo[1].replace(/\s+/g,'').toUpperCase();
+    maChamCong = combo[2].trim();
+  } else {
+    const nv = rawText.match(/\b([A-Z]{2}\s*\d{3,5})\b/i);
+    const cc = rawText.match(/[\(\[]\s*(\d{3,6})\s*[\)\]]/);
+    if (nv) maNV = nv[1].replace(/\s+/g,'').toUpperCase();
+    if (cc) maChamCong = cc[1].trim();
+  }
+  const ignore = ['CONG TY','CÔNG TY','CO PHAN','CỔ PHẦN','LIWAYWAY','VIET NAM','VIỆT NAM',
+    'CONG NHAN','CÔNG NHÂN','SAN XUAT','SẢN XUẤT','VAN HANH','VẬN HÀNH','BAO BI','BAO BÌ',
+    'NHAN VIEN','NHÂN VIÊN','OFFICE','STAFF','NHAN SU','NHÂN SỰ','CAP LAN','CẤP LẦN'];
+  const lines = rawText.split(/\r?\n/).map(s => s.replace(/[^A-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠƯẠ-Ỹ\s]/gi,' ').replace(/\s+/g,' ').trim()).filter(s => s.length >= 6);
+  for (const line of lines) {
+    const upper = line.toUpperCase();
+    const words = upper.split(' ').filter(Boolean);
+    if (!ignore.some(k => upper.includes(k)) && words.length >= 2 && words.length <= 5) { hoTen = upper; break; }
+  }
+  return { maNV, maChamCong, hoTen };
+}
+
+async function xuLyVaDoSheet(text) {
+  const parsed = tachThongTinTheLiwayway(text);
+  await apDungVaDoSheet(parsed, text);
+}
+
+async function apDungVaDoSheet(parsed, rawText) {
+  $('maNV').value = parsed.maNV || '';
+  $('maChamCong').value = parsed.maChamCong || '';
+  $('hoTen').value = parsed.hoTen || '';
+  foundInList = false;
+  const badge = $('matchBadge');
+  try {
+    const params = new URLSearchParams({
+      action:'lookup', maNV:parsed.maNV || '', maChamCong:parsed.maChamCong || '',
+      hoTen:parsed.hoTen || '', rawText:rawText || ''
+    });
+    const response = await fetch(`${GAS_WEBAPP_URL}?${params.toString()}`, { cache:'no-store' });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const res = await response.json();
+    if (res.found) {
+      foundInList = true;
+      $('hoTen').value = res.hoTen;
+      $('maNV').value = res.maNV;
+      $('maChamCong').value = res.maChamCong;
+      $('caLamViec').value = res.caLamViec;
+      badge.className = 'badge ok';
+      badge.textContent = `✓ Có trong danh sách | Ca làm việc: ${res.caLamViec}`;
+      setStatus('Đã tìm thấy nhân viên.');
+    } else {
+      $('caLamViec').value = '';
+      badge.className = 'badge warn';
+      badge.textContent = res.error ? 'Lỗi tra cứu: ' + res.error : '✕ Không tìm thấy nhân viên trong danh sách (DanhSachNV).';
+      setStatus('Đã tra cứu xong.');
+    }
+  } catch (err) { setStatus('Lỗi kết nối Google Sheet: ' + err.message); }
+}
+
 async function luuChamCong() {
-const payload = {
-action: 'save',
-foundInList,
-hoTen: document.getElementById('hoTen').value.trim(),
-maNV: document.getElementById('maNV').value.trim(),
-maChamCong: document.getElementById('maChamCong').value.trim(),
-caLamViec: document.getElementById('caLamViec').value.trim()
-};
-if (!payload.maNV && !payload.maChamCong && !payload.hoTen) {
-alert('Chưa có thông tin nhân viên để lưu.');
-return;
+  if (busy) return;
+  const payload = {
+    action:'save', foundInList,
+    hoTen:$('hoTen').value.trim(), maNV:$('maNV').value.trim(),
+    maChamCong:$('maChamCong').value.trim(), caLamViec:$('caLamViec').value.trim(),
+    imageData:capturedImageData
+  };
+  if (!payload.maNV && !payload.maChamCong && !payload.hoTen) {
+    alert('Chưa có thông tin nhân viên để lưu.'); return;
+  }
+  setBusy(true);
+  $('saveMsg').textContent = 'Đang lưu chấm công và tải ảnh lên Google Drive...';
+  try {
+    const response = await fetch(GAS_WEBAPP_URL, {
+      method:'POST',
+      headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+      body:JSON.stringify(payload)
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const res = await response.json();
+    if (!res.success) throw new Error(res.error || 'Không xác định');
+    $('saveMsg').textContent = `✓ Đã ghi lúc ${res.time} — ${res.status}` +
+      (res.imageUrl ? ' — Ảnh đã lưu trên Google Drive: ' + res.imageUrl : ' — Không có ảnh đính kèm.');
+    capturedImageData = '';
+  } catch (err) {
+    $('saveMsg').textContent = 'Lỗi lưu dữ liệu/ảnh: ' + err.message;
+  } finally { setBusy(false); }
 }
-const saveMsg = document.getElementById('saveMsg');
-saveMsg.innerText = 'Đang ghi vào Google Sheet...';
-try {
-// Dùng text/plain để tránh trình duyệt chặn CORS Preflight khi gọi GAS từ GitHub Pages
-const response = await fetch(GAS_WEBAPP_URL, {
-method: 'POST',
-headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-body: JSON.stringify(payload)
+
+window.addEventListener('pagehide', () => {
+  if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
 });
-const res = await response.json();
-if (res.success) {
-saveMsg.innerText = ✓ Đã ghi lúc ${res.time} — Trạng thái: ${res.status};
-} else {
-saveMsg.innerText = 'Lỗi ghi dữ liệu: ' + (res.error || 'Không xác định');
-}
-} catch (err) {
-saveMsg.innerText = 'Lỗi kết nối khi lưu: ' + err.message;
-}
-}
+</script>
+</body>
+</html>
